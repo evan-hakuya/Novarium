@@ -15,7 +15,7 @@ export interface BookSummary {
 export interface BookDetail {
   book: { id: string; title: string; author: string; originalName: string; originalSize: number };
   /** 当前版本。options 是生成它的整理选项。 */
-  version: { options: ProcessOptions; createdAt: string } | null;
+  version: { id: string; options: ProcessOptions; createdAt: string };
   chapters: { order: number; title: string; number: number | null; byteLength: number }[];
 }
 
@@ -60,6 +60,37 @@ export interface NewBook {
   options: ProcessOptions;
 }
 
+/** 下载一本书的原稿，用于重新整理。 */
+export async function fetchOriginal(bookId: string): Promise<ArrayBuffer> {
+  const res = await fetch(`/api/admin/books/${bookId}/original`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new ApiError(res.status, body?.error ?? `http_${res.status}`);
+  }
+  return res.arrayBuffer();
+}
+
+/** 重新整理后保存为新版本：先上传正文，再提交章节索引；服务端随后切换当前版本并删除旧版本。 */
+export async function saveNewVersion(
+  bookId: string,
+  draft: { text: Uint8Array; chapters: ChapterDraft[]; options: ProcessOptions },
+  onStep?: (step: "text" | "index") => void,
+) {
+  const versionId = crypto.randomUUID();
+  onStep?.("text");
+  await request(`/api/admin/books/${bookId}/versions/${versionId}/text`, {
+    method: "PUT",
+    body: draft.text as Uint8Array<ArrayBuffer>,
+  });
+  onStep?.("index");
+  await request(`/api/admin/books/${bookId}/versions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ versionId, options: draft.options, chapters: draft.chapters }),
+  });
+  return versionId;
+}
+
 /** 导入一本书：先上传原稿与版本正文，再提交元数据与章节索引。返回书 ID。 */
 export async function importBook(book: NewBook, onStep?: (step: "original" | "text" | "index") => void) {
   const id = crypto.randomUUID();
@@ -89,6 +120,8 @@ export async function importBook(book: NewBook, onStep?: (step: "original" | "te
 }
 
 const errorText: Record<string, string> = {
+  version_text_missing: "新版本正文没有上传完整。",
+  original_missing: "原稿文件丢失。",
   too_large: "文件超过 100 MB，无法上传。",
   invalid_chapter_index: "章节索引没有通过服务端校验。",
   book_exists: "这本书已经存在。",
