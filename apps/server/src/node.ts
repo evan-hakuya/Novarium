@@ -29,10 +29,16 @@ const deps: AppDeps = {
   runtime: "node",
   db,
   storage: createFsStorage(join(dataDir, "books")),
+  ownerPassword: process.env.OWNER_PASSWORD || undefined,
 };
+if (!deps.ownerPassword) {
+  console.warn(JSON.stringify({ message: "OWNER_PASSWORD is not set; owner login is disabled" }));
+}
 
 const app = new Hono();
 app.route("/", createApi(() => deps));
+// 未匹配的 API 路径返回 404，不落到下面的 SPA 回退。
+app.all("/api/*", (c) => c.json({ error: "not_found" }, 404));
 if (existsSync(webDir)) {
   app.use("*", serveStatic({ root: webDir }));
   // SPA：未命中的非 API 路径都返回 index.html。

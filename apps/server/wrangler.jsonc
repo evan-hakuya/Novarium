@@ -3,6 +3,9 @@
   "name": "novarium",
   "main": "src/worker.ts",
   "compatibility_date": "2026-11-24",
+  "secrets": {
+    "required": ["OWNER_PASSWORD"]
+  },
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",
