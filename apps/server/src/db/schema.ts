@@ -1,5 +1,15 @@
 import { sqliteTable, text, integer, primaryKey, index } from "drizzle-orm/sqlite-core";
 
+// 访问令牌：只保存 SHA-256 哈希，明文只在创建时返回一次。撤销后保留记录，revokedAt 非空。
+export const accessTokens = sqliteTable("access_tokens", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
+  revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+});
+
 // 书库级别的键值设置，例如默认整理选项与过滤词表。
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),

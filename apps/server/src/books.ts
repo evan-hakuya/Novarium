@@ -125,27 +125,10 @@ export function createBookRoutes() {
   });
 
   app.get("/books/:bookId/chapters/:order", async (c) => {
-    const { db, storage } = c.get("deps");
-    const order = Number(c.req.param("order"));
-    if (!Number.isSafeInteger(order) || order < 0) return c.json({ error: "not_found" }, 404);
-    const book = await db.select().from(books).where(eq(books.id, c.req.param("bookId"))).get();
-    if (!book) return c.json({ error: "not_found" }, 404);
-    const chapter = await db
-      .select()
-      .from(chapters)
-      .where(and(eq(chapters.versionId, book.currentVersionId), eq(chapters.ord, order)))
-      .get();
-    if (!chapter) return c.json({ error: "not_found" }, 404);
-    let content = "";
-    if (chapter.byteLength > 0) {
-      const stream = await storage.get(versionTextKey(book.id, book.currentVersionId), {
-        offset: chapter.byteOffset,
-        length: chapter.byteLength,
-      });
-      if (!stream) return c.json({ error: "version_text_missing" }, 500);
-      content = await new Response(stream).text();
-    }
-    return c.json({ order: chapter.ord, title: chapter.title, content });
+    const result = await readChapter(c.get("deps"), c.req.param("bookId"), c.req.param("order"));
+    if (result === "not_found") return c.json({ error: "not_found" }, 404);
+    if (result === "text_missing") return c.json({ error: "version_text_missing" }, 500);
+    return c.json(result);
   });
 
   return app;
@@ -170,6 +153,34 @@ interface IndexEntry {
 }
 
 export type BatchQuery = BatchItem<"sqlite">;
+
+/** 按阅读顺序读取书的当前版本中的一章：只读这一章在正文文件中的字节范围。 */
+export async function readChapter(
+  { db, storage }: Pick<AppDeps, "db" | "storage">,
+  bookId: string,
+  orderParam: string,
+): Promise<{ order: number; title: string; content: string } | "not_found" | "text_missing"> {
+  const order = Number(orderParam);
+  if (!/^\d+$/.test(orderParam) || !Number.isSafeInteger(order)) return "not_found";
+  const book = await db.select().from(books).where(eq(books.id, bookId)).get();
+  if (!book) return "not_found";
+  const chapter = await db
+    .select()
+    .from(chapters)
+    .where(and(eq(chapters.versionId, book.currentVersionId), eq(chapters.ord, order)))
+    .get();
+  if (!chapter) return "not_found";
+  let content = "";
+  if (chapter.byteLength > 0) {
+    const stream = await storage.get(versionTextKey(book.id, book.currentVersionId), {
+      offset: chapter.byteOffset,
+      length: chapter.byteLength,
+    });
+    if (!stream) return "text_missing";
+    content = await new Response(stream).text();
+  }
+  return { order: chapter.ord, title: chapter.title, content };
+}
 
 async function bookExists(db: AppDeps["db"], id: string) {
   return !!(await db.select({ id: books.id }).from(books).where(eq(books.id, id)).get());
