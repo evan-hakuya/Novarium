@@ -8,6 +8,8 @@ type Env = { Variables: { deps: AppDeps } };
 
 /** 书源 API 的路径前缀。书源 JSON 与 API 返回的链接都用相对路径，由阅读客户端按书源地址补全。 */
 export const SOURCE_BASE = "/api/source";
+/** 书源网络导入地址的路径前缀，后接访问令牌。 */
+export const IMPORT_BASE = "/api/book-sources";
 const SEARCH_PAGE_SIZE = 20;
 
 const bookUrl = (id: string) => `${SOURCE_BASE}/books/${id}`;

@@ -12,9 +12,9 @@ import {
 } from "./auth";
 import { createBookRoutes, type BatchQuery } from "./books";
 import type { Db } from "./db";
-import { createSourceRoutes, SOURCE_BASE } from "./source";
+import { createSourceRoutes, IMPORT_BASE, SOURCE_BASE } from "./source";
 import type { StorageProvider } from "./storage/types";
-import { createTokenRoutes, requireAccessToken } from "./tokens";
+import { createImportRoutes, createTokenRoutes, requireAccessToken } from "./tokens";
 
 export type Runtime = "cloudflare" | "node";
 
@@ -85,6 +85,7 @@ export function createApi(getDeps: (c: { env: unknown }) => AppDeps) {
   const sourcePath = SOURCE_BASE.slice("/api".length);
   api.use(`${sourcePath}/*`, requireAccessToken<Env>());
   api.route(sourcePath, createSourceRoutes());
+  api.route(IMPORT_BASE.slice("/api".length), createImportRoutes());
 
   api.notFound((c) => c.json({ error: "not_found" }, 404));
 

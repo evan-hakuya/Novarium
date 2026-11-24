@@ -92,6 +92,8 @@ const errorText: Record<string, string> = {
   book_exists: "这本书已经存在。",
   invalid_title: "书名不能为空，且不能超过 200 字。",
   invalid_name: "名称不能为空，且不能超过 50 字。",
+  token_revoked: "这个访问令牌已撤销。",
+  token_not_viewable: "这个访问令牌创建时没有保存明文，无法再次查看书源。",
   unauthorized: "登录已失效，请重新登录。",
 };
 
