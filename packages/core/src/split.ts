@@ -1,6 +1,6 @@
 import { extractChapterOrder } from "./vendor/novel-processor/novel";
 import { detectChapterUnit, isChapterTitleLine } from "./vendor/novel-processor/regex";
-import { orderByNumber } from "./numbering";
+import { applyNumberFixes } from "./numbering";
 import type { ChapterDraft } from "./types";
 
 export type { ChapterDraft };
@@ -102,11 +102,14 @@ function chapterSegments(lines: string[], pattern: string | null): Segment[] {
   return segments;
 }
 
-/** 按章节序号重排正文中各章节的位置（规则见 orderByNumber），返回重排后的正文。 */
-export function reorderTextByNumber(text: string, options: SplitOptions): string {
+/** 按所有者选择的修复调整正文中各章节的位置（规则见 applyNumberFixes），返回调整后的正文。 */
+export function applyNumberFixesToText(text: string, options: SplitOptions, fixes: readonly string[]): string {
   const lines = text.split("\n");
   const segments = chapterSegments(lines, options.chapterPattern);
-  const order = orderByNumber(segments.map((s, i) => ({ order: i, number: s.number })));
+  const order = applyNumberFixes(
+    segments.map((s, i) => ({ order: i, title: s.title, number: s.number })),
+    fixes,
+  );
   return order.map((i) => lines.slice(segments[i]!.from, segments[i]!.to).join("\n")).join("\n");
 }
 

@@ -20,7 +20,8 @@ describe("parseProcessOptions", () => {
   });
 
   it.each([
-    ["non-boolean reorder", { ...DEFAULT_PROCESS_OPTIONS, reorderByNumber: "yes" }],
+    ["non-array fixes", { ...DEFAULT_PROCESS_OPTIONS, numberFixes: "x" }],
+    ["empty ignore key", { ...DEFAULT_PROCESS_OPTIONS, numberIgnores: [""] }],
     ["missing boolean", { ...DEFAULT_PROCESS_OPTIONS, indent: undefined }],
     ["bad regex", { ...DEFAULT_PROCESS_OPTIONS, chapterPattern: "(" }],
     ["empty regex", { ...DEFAULT_PROCESS_OPTIONS, chapterPattern: "" }],
@@ -33,8 +34,8 @@ describe("parseProcessOptions", () => {
     expect(parseProcessOptions(value).ok).toBe(false);
   });
 
-  it("treats options saved before reorderByNumber existed as not reordered", () => {
-    const { reorderByNumber: _, ...legacy } = DEFAULT_PROCESS_OPTIONS;
-    expect(parseProcessOptions(legacy)).toEqual({ ok: true, options: DEFAULT_PROCESS_OPTIONS });
+  it("treats options saved before number reviews existed as unreviewed", () => {
+    const { numberFixes: _f, numberIgnores: _i, ...legacy } = DEFAULT_PROCESS_OPTIONS;
+    expect(parseProcessOptions({ ...legacy, reorderByNumber: true })).toEqual({ ok: true, options: DEFAULT_PROCESS_OPTIONS });
   });
 });

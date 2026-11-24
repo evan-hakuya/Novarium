@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { booksQueryKey, describeError, formatBytes, importBook, MAX_UPLOAD_BYTES } from "@/api/books";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { guessBookName } from "@/lib/book-name";
+import { countPending, reviewNumbers } from "@/lib/number-review";
 import { useProcessPreview } from "@/lib/use-process-preview";
 
 interface Source {
@@ -22,7 +23,7 @@ export function ImportPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [source, setSource] = useState<Source | null>(null);
-  const { options, preview, processing, error, setError, run, reset } = useProcessPreview();
+  const { options, preview, processing, error, setError, run, reset, patchOptions } = useProcessPreview();
   const [uploadStep, setUploadStep] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
@@ -73,6 +74,7 @@ export function ImportPage() {
   const uploading = uploadStep !== null;
   const busy = processing || uploading;
   const version = preview?.version;
+  const pending = useMemo(() => (preview ? countPending(reviewNumbers(preview.version.chapters, preview.options)) : 0), [preview]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -113,8 +115,9 @@ export function ImportPage() {
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
               {version.chapters.length} 章 · 整理后 {formatBytes(version.text.byteLength)}
+              {pending > 0 && <span className="text-destructive"> · 还有 {pending} 处章节序号异常待处理</span>}
             </span>
-            <Button onClick={onSubmit} disabled={busy || !title.trim()}>
+            <Button onClick={onSubmit} disabled={busy || !title.trim() || pending > 0}>
               提交
             </Button>
           </div>
@@ -122,7 +125,8 @@ export function ImportPage() {
             version={version}
             options={preview.options}
             onChangeOptions={(next) => source && void run(source.bytes, next)}
-            disabled={uploading}
+            onPatchOptions={patchOptions}
+            disabled={busy}
           />
         </>
       )}

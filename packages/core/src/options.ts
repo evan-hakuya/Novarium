@@ -24,8 +24,10 @@ export interface ProcessOptions {
   filterMaxLineLength: number;
   /** 本书的章节标题正则；为 null 时使用内置规则。 */
   chapterPattern: string | null;
-  /** 按章节序号重排阅读顺序。只按书设置，由所有者在预览中决定；系统不自动重排。 */
-  reorderByNumber: boolean;
+  /** 所有者选择修复的章节序号异常（异常的 key）。只按书设置；系统不自动修复。 */
+  numberFixes: string[];
+  /** 所有者选择忽略的章节序号异常（异常的 key）。只按书设置。 */
+  numberIgnores: string[];
 }
 
 export const DEFAULT_PROCESS_OPTIONS: Readonly<ProcessOptions> = Object.freeze({
@@ -41,8 +43,13 @@ export const DEFAULT_PROCESS_OPTIONS: Readonly<ProcessOptions> = Object.freeze({
   filterWords: [],
   filterMaxLineLength: 0,
   chapterPattern: null,
-  reorderByNumber: false,
+  numberFixes: [],
+  numberIgnores: [],
 });
+
+/** 每本书最多记录的修复或忽略条数。 */
+export const MAX_NUMBER_REVIEWS = 20_000;
+const MAX_REVIEW_KEY_LENGTH = 300;
 
 /** 过滤词表的上限，防止异常输入。 */
 export const MAX_FILTER_WORDS = 1000;
@@ -98,9 +105,19 @@ export function parseProcessOptions(
       return { ok: false, error: "chapterPattern is not a valid regular expression" };
     }
   }
-  // 早期保存的整理选项没有这一项，视为不重排。
-  const reorder = v.reorderByNumber ?? false;
-  if (typeof reorder !== "boolean") return { ok: false, error: "reorderByNumber must be a boolean" };
+  // 早期保存的整理选项没有这两项，视为没有处理过异常。
+  const reviews: Record<"numberFixes" | "numberIgnores", string[]> = { numberFixes: [], numberIgnores: [] };
+  for (const key of ["numberFixes", "numberIgnores"] as const) {
+    const list = v[key] ?? [];
+    if (
+      !Array.isArray(list) ||
+      list.length > MAX_NUMBER_REVIEWS ||
+      !list.every((k) => typeof k === "string" && k.length > 0 && k.length <= MAX_REVIEW_KEY_LENGTH)
+    ) {
+      return { ok: false, error: `${key} must be an array of at most ${MAX_NUMBER_REVIEWS} non-empty strings` };
+    }
+    reviews[key] = [...new Set(list as string[])];
+  }
   const options = { ...DEFAULT_PROCESS_OPTIONS } as ProcessOptions;
   for (const key of BOOLEAN_KEYS) options[key] = v[key] as boolean;
   return {
@@ -111,7 +128,7 @@ export function parseProcessOptions(
       filterWords,
       filterMaxLineLength: max,
       chapterPattern: pattern,
-      reorderByNumber: reorder,
+      ...reviews,
     },
   };
 }

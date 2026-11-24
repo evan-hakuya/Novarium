@@ -11,5 +11,13 @@ export {
   type SplitOptions,
 } from "./split";
 export { processManuscript, type VersionDraft } from "./process";
-export { findNumberAnomalies, orderByNumber, type NumberAnomaly } from "./numbering";
+export {
+  applyNumberFixes,
+  findNumberAnomalies,
+  isFixable,
+  needsNoAction,
+  parseOutOfOrderKey,
+  type NumberAnomaly,
+  type NumberAnomalyKind,
+} from "./numbering";
 export { validateChapterIndex, MAX_CHAPTERS } from "./validate";

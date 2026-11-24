@@ -57,7 +57,8 @@ function OptionsSummary({ options }: { options: Partial<ProcessOptions> }) {
   const parts = [
     `清洗：${steps.join("、") || "无"}`,
     `章节正则：${options.chapterPattern ?? "内置规则"}`,
-    ...(options.reorderByNumber ? ["已按章节序号重排"] : []),
+    ...(options.numberFixes?.length ? [`修复序号异常 ${options.numberFixes.length} 处`] : []),
+    ...(options.numberIgnores?.length ? [`忽略序号异常 ${options.numberIgnores.length} 处`] : []),
     `过滤词 ${options.filterWords?.length ?? 0} 个（阈值 ${options.filterMaxLineLength || "不限"}）`,
   ];
   return <p className="mt-1 text-xs text-muted-foreground">整理选项 · {parts.join(" · ")}</p>;

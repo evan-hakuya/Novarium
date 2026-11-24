@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { booksQueryKey, describeError, fetchBook, fetchOriginal, formatBytes, saveNewVersion } from "@/api/books";
@@ -6,6 +6,7 @@ import { fetchDefaultProcessOptions, processOptionsQueryKey } from "@/api/settin
 import { OptionsPanel } from "@/components/options-panel";
 import { PreviewBrowser } from "@/components/preview-browser";
 import { Button } from "@/components/ui/button";
+import { countPending, reviewNumbers } from "@/lib/number-review";
 import { useProcessPreview } from "@/lib/use-process-preview";
 
 const route = getRouteApi("/owner/books/$bookId/reprocess");
@@ -18,8 +19,9 @@ export function ReprocessPage() {
   const navigate = useNavigate();
   const detail = useQuery({ queryKey: ["books", bookId], queryFn: () => fetchBook(bookId) });
   const original = useQuery({ queryKey: ["books", bookId, "original"], queryFn: () => fetchOriginal(bookId), staleTime: Infinity, gcTime: 0 });
-  const { options, preview, processing, error, setError, run } = useProcessPreview();
+  const { options, preview, processing, error, setError, run, patchOptions } = useProcessPreview();
   const [saveStep, setSaveStep] = useState<string | null>(null);
+  const pending = useMemo(() => (preview ? countPending(reviewNumbers(preview.version.chapters, preview.options)) : 0), [preview]);
 
   // 初始值为当前版本记录的整理选项。
   useEffect(() => {
@@ -87,8 +89,9 @@ export function ReprocessPage() {
             <span>
               当前 {current.chapters.length} 章 → 新版本 {version.chapters.length} 章 · 整理后{" "}
               {formatBytes(version.text.byteLength)}
+              {pending > 0 && <span className="text-destructive"> · 还有 {pending} 处章节序号异常待处理</span>}
             </span>
-            <Button onClick={onSave} disabled={processing || saving}>
+            <Button onClick={onSave} disabled={processing || saving || pending > 0}>
               保存为新版本
             </Button>
           </div>
@@ -96,7 +99,8 @@ export function ReprocessPage() {
             version={version}
             options={preview.options}
             onChangeOptions={(next) => void run(original.data, next)}
-            disabled={saving}
+            onPatchOptions={patchOptions}
+            disabled={saving || processing}
           />
         </>
       )}

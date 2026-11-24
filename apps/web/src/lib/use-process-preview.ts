@@ -50,5 +50,11 @@ export function useProcessPreview() {
     setError(null);
   }
 
-  return { options, preview, processing, error, setError, run, reset };
+  /** 只改整理选项中的记录（如忽略的异常），不影响整理结果，因此不重新整理。 */
+  function patchOptions(next: ProcessOptions) {
+    setOptions(next);
+    setPreview((p) => (p ? { ...p, options: next } : p));
+  }
+
+  return { options, preview, processing, error, setError, run, reset, patchOptions };
 }
