@@ -11,3 +11,4 @@ export {
   type SplitOptions,
 } from "./split";
 export { processManuscript, type VersionDraft } from "./process";
+export { validateChapterIndex, MAX_CHAPTERS } from "./validate";

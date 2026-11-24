@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "wrangler d1 migrations apply DB --local && wrangler dev",
     "dev:node": "pnpm build && node dist/node.js",
-    "build": "esbuild src/node.ts --bundle --platform=node --target=node24 --format=esm --packages=external --outfile=dist/node.js",
+    "build": "esbuild src/node.ts --bundle --platform=node --target=node24 --format=esm --external:better-sqlite3 --outfile=dist/node.js",
     "typecheck": "tsc -p tsconfig.worker.json && tsc -p tsconfig.node.json",
     "test": "echo \"no tests\"",
     "db:generate": "drizzle-kit generate",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.11",
+    "@novarium/core": "workspace:*",
     "better-sqlite3": "^13.2.0",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.20"

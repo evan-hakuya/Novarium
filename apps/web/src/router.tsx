@@ -10,7 +10,9 @@ import {
 } from "@tanstack/react-router";
 import { fetchSession, logout, sessionQueryKey } from "./api/auth";
 import { Button } from "./components/ui/button";
-import { HomePage } from "./pages/home";
+import { BookPage } from "./pages/book";
+import { BooksPage } from "./pages/books";
+import { ImportPage } from "./pages/import";
 import { LoginPage } from "./pages/login";
 
 interface RouterContext {
@@ -69,22 +71,34 @@ function OwnerLayout() {
           退出登录
         </Button>
       </header>
-      <main className="mx-auto max-w-3xl p-6">
+      <main className="mx-auto max-w-5xl p-6">
         <Outlet />
       </main>
     </>
   );
 }
 
-const homeRoute = createRoute({
+const booksRoute = createRoute({
   getParentRoute: () => ownerRoute,
   path: "/",
-  component: HomePage,
+  component: BooksPage,
+});
+
+const importRoute = createRoute({
+  getParentRoute: () => ownerRoute,
+  path: "/import",
+  component: ImportPage,
+});
+
+const bookRoute = createRoute({
+  getParentRoute: () => ownerRoute,
+  path: "/books/$bookId",
+  component: BookPage,
 });
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([loginRoute, ownerRoute.addChildren([homeRoute])]),
+    routeTree: rootRoute.addChildren([loginRoute, ownerRoute.addChildren([booksRoute, importRoute, bookRoute])]),
     context: { queryClient },
   });
 }
