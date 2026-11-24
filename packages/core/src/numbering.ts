@@ -1,38 +1,102 @@
-// 章节序号的异常检查与按序号重排。只看章节的阅读顺序与章节序号，不读正文。
+// 章节序号的异常检查与逐条修复。只看章节的阅读顺序、标题与章节序号，不读正文。
 
 export interface NumberedChapter {
   order: number;
+  title: string;
   number: number | null;
 }
 
-/** 章节序号异常。order 都是阅读顺序，用来在预览中定位章节。 */
-export type NumberAnomaly =
-  /** 序号从较大值重置到 1 的分卷边界候选。 */
+/**
+ * 章节序号异常。order 都是阅读顺序，用来在预览中定位章节。
+ * key 标识一条异常，所有者的修复与忽略按 key 记在整理选项中；section 是分卷序号，从 0 开始。
+ */
+export type NumberAnomaly = { key: string; section: number } & (
+  /** 分卷边界：序号从较大值重置到 1。系统自动按分卷检查，无需处理。 */
   | { kind: "sectionReset"; order: number; previous: number }
   /** 缺号：序号 from 到 to 不存在，缺口位于阅读顺序为 after 的章节（序号 from - 1）之后。 */
   | { kind: "missing"; from: number; to: number; after: number }
   /** 重复编号：多个章节使用同一个序号。 */
   | { kind: "duplicate"; number: number; orders: number[] }
-  /** 乱序：章节序号小于阅读顺序上前一个有序号的章节。 */
-  | { kind: "outOfOrder"; order: number; number: number; previous: number };
+  /** 乱序：章节不在分卷内按序号递增的最长序列上，位置需要调整。 */
+  | { kind: "outOfOrder"; order: number; number: number; title: string }
+);
 
-/** 找出章节序号的缺号、重复编号与乱序。没有章节序号的章节不参与检查。 */
-export function findNumberAnomalies(chapters: readonly NumberedChapter[]): NumberAnomaly[] {
-  const numbered = chapters.filter((c): c is NumberedChapter & { number: number } => c.number !== null);
-  const anomalies: NumberAnomaly[] = [];
+export type NumberAnomalyKind = NumberAnomaly["kind"];
 
-  const sections: (NumberedChapter & { number: number })[][] = [];
+/** 可以由系统修复的异常类型：乱序章节可以移动到按序号应在的位置。 */
+export const isFixable = (a: NumberAnomaly) => a.kind === "outOfOrder";
+/** 系统已自动处理、不需要所有者操作的异常类型。 */
+export const needsNoAction = (a: NumberAnomaly) => a.kind === "sectionReset";
+
+type Numbered = NumberedChapter & { number: number };
+
+const outOfOrderKey = (section: number, number: number, title: string) => `outOfOrder|${section}|${number}|${title}`;
+
+/** 从 key 读出乱序章节的序号与标题，用于显示已修复的异常。 */
+export function parseOutOfOrderKey(key: string): { section: number; number: number; title: string } | null {
+  const [kind, section, number, ...title] = key.split("|");
+  if (kind !== "outOfOrder" || !section || !number) return null;
+  return { section: Number(section), number: Number(number), title: title.join("|") };
+}
+
+/**
+ * 按序号重置把有序号的章节分成分卷：当前分卷已经有第 1 章，又遇到第 1 章且前一章序号大于 1。
+ * 当前分卷还没有第 1 章时（如「第3章、第1章、第2章」），第 1 章只是乱序，不是新分卷。
+ */
+function splitSections(numbered: Numbered[]): { sections: Numbered[][]; resets: { order: number; previous: number }[] } {
+  const sections: Numbered[][] = [];
+  const resets: { order: number; previous: number }[] = [];
   for (const chapter of numbered) {
-    const previous = sections.at(-1)?.at(-1);
-    if (previous && chapter.number === 1 && previous.number > 1) {
-      anomalies.push({ kind: "sectionReset", order: chapter.order, previous: previous.number });
+    if (startsSection(sections.at(-1), chapter)) {
+      const previous = sections.at(-1)!.at(-1)!;
+      resets.push({ order: chapter.order, previous: previous.number });
       sections.push([]);
     }
     if (!sections.length) sections.push([]);
     sections.at(-1)!.push(chapter);
   }
+  return { sections, resets };
+}
 
-  for (const section of sections) {
+function startsSection(section: readonly { number: number | null }[] | undefined, chapter: { number: number | null }) {
+  const previous = section?.findLast((c) => c.number !== null);
+  return (
+    !!previous && chapter.number === 1 && previous.number! > 1 && section!.some((c) => c.number === 1)
+  );
+}
+
+/** 序号不减的最长子序列之外的章节下标：移动这些章节即可让分卷按序号排列，且移动的章节最少。 */
+function misplaced(section: Numbered[]): Set<number> {
+  const tails: number[] = []; // tails[k]：长度为 k+1 的子序列的末尾下标
+  const prev: number[] = [];
+  section.forEach((c, i) => {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (section[tails[mid]!]!.number <= c.number) lo = mid + 1;
+      else hi = mid;
+    }
+    prev[i] = lo > 0 ? tails[lo - 1]! : -1;
+    tails[lo] = i;
+  });
+  const keep = new Set<number>();
+  for (let i = tails.at(-1) ?? -1; i >= 0; i = prev[i]!) keep.add(i);
+  return new Set(section.map((_, i) => i).filter((i) => !keep.has(i)));
+}
+
+/** 找出章节序号的分卷边界、缺号、重复编号与乱序。没有章节序号的章节不参与检查。 */
+export function findNumberAnomalies(chapters: readonly NumberedChapter[]): NumberAnomaly[] {
+  const numbered = chapters.filter((c): c is Numbered => c.number !== null);
+  const { sections, resets } = splitSections(numbered);
+  const anomalies: NumberAnomaly[] = resets.map((r, i) => ({
+    key: `sectionReset|${i + 1}`,
+    section: i + 1,
+    kind: "sectionReset",
+    ...r,
+  }));
+
+  sections.forEach((section, s) => {
     const byNumber = new Map<number, number[]>();
     for (const c of section) byNumber.set(c.number, [...(byNumber.get(c.number) ?? []), c.order]);
 
@@ -40,35 +104,89 @@ export function findNumberAnomalies(chapters: readonly NumberedChapter[]): Numbe
     for (let i = 1; i < sorted.length; i++) {
       const a = sorted[i - 1]!;
       const b = sorted[i]!;
-      if (b - a > 1) anomalies.push({ kind: "missing", from: a + 1, to: b - 1, after: byNumber.get(a)![0]! });
+      if (b - a > 1) {
+        anomalies.push({ key: `missing|${s}|${a + 1}|${b - 1}`, section: s, kind: "missing", from: a + 1, to: b - 1, after: byNumber.get(a)![0]! });
+      }
     }
     for (const n of sorted) {
       const orders = byNumber.get(n)!;
-      if (orders.length > 1) anomalies.push({ kind: "duplicate", number: n, orders });
+      if (orders.length > 1) anomalies.push({ key: `duplicate|${s}|${n}`, section: s, kind: "duplicate", number: n, orders });
     }
-    for (let i = 1; i < section.length; i++) {
-      const prev = section[i - 1]!;
-      const cur = section[i]!;
-      if (cur.number < prev.number) anomalies.push({ kind: "outOfOrder", order: cur.order, number: cur.number, previous: prev.number });
+    for (const i of misplaced(section)) {
+      const c = section[i]!;
+      anomalies.push({
+        key: outOfOrderKey(s, c.number, c.title),
+        section: s,
+        kind: "outOfOrder",
+        order: c.order,
+        number: c.number,
+        title: c.title,
+      });
     }
-  }
+  });
   return anomalies;
 }
 
 /**
- * 按章节序号重排阅读顺序，返回原阅读顺序组成的新顺序。
- * 没有章节序号的章节跟随它前面最近的有序号章节一起移动；位于所有有序号章节之前的（如序章）留在最前。
- * 序号相同的章节保持原来的先后。
+ * 按所有者选择修复的乱序异常（fixes 中的 key）调整阅读顺序，返回原阅读顺序组成的新顺序。
+ * 被修复的章节连同它后面没有序号的章节（如番外）一起移动，放到同一分卷中第一个序号更大的章节之前；
+ * 没有更大的序号时放到分卷末尾。其他章节的相对位置不变。
+ * 一次修复后可能出现新的、已被选择的异常（所有者在修复后的预览上选择的），因此重复直到没有可修复的。
  */
-export function orderByNumber(chapters: readonly NumberedChapter[]): number[] {
-  const head: number[] = [];
-  const groups: { number: number; orders: number[] }[] = [];
-  for (const c of chapters) {
-    if (c.number !== null) groups.push({ number: c.number, orders: [c.order] });
-    else if (groups.length > 0) groups[groups.length - 1]!.orders.push(c.order);
-    else head.push(c.order);
+export function applyNumberFixes(chapters: readonly NumberedChapter[], fixes: readonly string[]): number[] {
+  const wanted = new Set(fixes);
+  let current = [...chapters];
+  const applied = new Set<string>();
+  for (let round = 0; round < 10; round++) {
+    const targets = new Set(
+      findNumberAnomalies(current)
+        .filter((a) => a.kind === "outOfOrder" && wanted.has(a.key) && !applied.has(a.key))
+        .map((a) => {
+          applied.add(a.key);
+          return (a as { order: number }).order;
+        }),
+    );
+    if (targets.size === 0) break;
+    current = moveChapters(current, targets);
   }
-  // Array.prototype.sort 是稳定排序。
-  groups.sort((a, b) => a.number - b.number);
-  return [...head, ...groups.flatMap((g) => g.orders)];
+  return current.map((c) => c.order);
+}
+
+interface Group {
+  number: number | null;
+  section: number;
+  items: NumberedChapter[];
+}
+
+/** 移动阅读顺序在 targets 中的章节组，返回新的章节序列（每项保留原 order）。 */
+function moveChapters(chapters: NumberedChapter[], targets: Set<number>): NumberedChapter[] {
+  // 分组：一个有序号的章节加上紧随其后的无序号章节；开头的无序号章节单独成组，不移动。
+  const groups: Group[] = [];
+  let section = 0;
+  let current: NumberedChapter[] = [];
+  for (const c of chapters) {
+    if (c.number === null) {
+      if (groups.length === 0) groups.push({ number: null, section: 0, items: [] });
+      groups.at(-1)!.items.push(c);
+      continue;
+    }
+    if (startsSection(current, c)) {
+      section++;
+      current = [];
+    }
+    current.push(c);
+    groups.push({ number: c.number, section, items: [c] });
+  }
+  const moving = groups.filter((g) => g.number !== null && targets.has(g.items[0]!.order));
+  const result = groups.filter((g) => !moving.includes(g));
+  // 序号小的先插入；序号相同的保持原来的先后。
+  for (const g of [...moving].sort((a, b) => a.number! - b.number!)) {
+    let at = result.findIndex((r) => r.section === g.section && r.number !== null && r.number > g.number!);
+    if (at < 0) {
+      const lastInSection = result.findLastIndex((r) => r.section === g.section);
+      at = lastInSection + 1;
+    }
+    result.splice(at, 0, g);
+  }
+  return result.flatMap((g) => g.items);
 }
