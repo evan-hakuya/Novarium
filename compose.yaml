@@ -5,4 +5,7 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/data
+    environment:
+      # 所有者密码。在 compose.yaml 同目录的 .env 中设置 OWNER_PASSWORD=...
+      OWNER_PASSWORD: ${OWNER_PASSWORD:?set OWNER_PASSWORD in .env}
     restart: unless-stopped

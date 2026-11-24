@@ -10,6 +10,7 @@ const api = createApi((c) => {
     runtime: "cloudflare",
     db: drizzle(env.DB, { schema }),
     storage: createR2Storage(env.BOOKS),
+    ownerPassword: env.OWNER_PASSWORD || undefined,
   };
 });
 
