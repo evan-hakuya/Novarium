@@ -4,6 +4,7 @@ import type { ProcessOptions } from "@novarium/core";
 import { describeError, fetchBook, fetchChapter, formatBytes } from "@/api/books";
 import { ChapterBrowser, ChapterText } from "@/components/chapter-browser";
 import { STEPS } from "@/components/process-options-form";
+import { Button } from "@/components/ui/button";
 
 const route = getRouteApi("/owner/books/$bookId");
 
@@ -20,12 +21,19 @@ export function BookPage() {
       <Link to="/" className="text-sm text-muted-foreground hover:underline">
         ← 书库
       </Link>
-      <div>
-        <h2 className="font-heading text-xl font-semibold">{book.title}</h2>
-        <p className="text-sm text-muted-foreground">
-          {book.author || "佚名"} · {chapters.length} 章 · 原稿 {book.originalName}（{formatBytes(book.originalSize)}）
-        </p>
-        {version && <OptionsSummary options={version.options} />}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-heading text-xl font-semibold">{book.title}</h2>
+          <p className="text-sm text-muted-foreground">
+            {book.author || "佚名"} · {chapters.length} 章 · 原稿 {book.originalName}（{formatBytes(book.originalSize)}）
+          </p>
+          <OptionsSummary options={version.options} />
+        </div>
+        <Button variant="outline" asChild>
+          <Link to="/books/$bookId/reprocess" params={{ bookId }}>
+            重新整理
+          </Link>
+        </Button>
       </div>
       <ChapterBrowser chapters={chapters} renderContent={(c) => <RemoteChapter bookId={bookId} order={c.order} />} />
     </div>

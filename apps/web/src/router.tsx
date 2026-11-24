@@ -15,6 +15,7 @@ import { BookPage } from "./pages/book";
 import { BooksPage } from "./pages/books";
 import { ImportPage } from "./pages/import";
 import { LoginPage } from "./pages/login";
+import { ReprocessPage } from "./pages/reprocess";
 import { SettingsPage } from "./pages/settings";
 import { TokensPage } from "./pages/tokens";
 
@@ -112,6 +113,12 @@ const bookRoute = createRoute({
   component: BookPage,
 });
 
+const reprocessRoute = createRoute({
+  getParentRoute: () => ownerRoute,
+  path: "/books/$bookId/reprocess",
+  component: ReprocessPage,
+});
+
 const tokensRoute = createRoute({
   getParentRoute: () => ownerRoute,
   path: "/tokens",
@@ -128,7 +135,7 @@ export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
     routeTree: rootRoute.addChildren([
       loginRoute,
-      ownerRoute.addChildren([booksRoute, importRoute, bookRoute, tokensRoute, settingsRoute]),
+      ownerRoute.addChildren([booksRoute, importRoute, bookRoute, reprocessRoute, tokensRoute, settingsRoute]),
     ]),
     context: { queryClient },
   });

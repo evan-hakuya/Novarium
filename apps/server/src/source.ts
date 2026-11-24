@@ -117,17 +117,14 @@ export function createSourceRoutes() {
   app.get("/books/:bookId/toc", async (c) => {
     const { db } = c.get("deps");
     const bookId = c.req.param("bookId");
-    const book = await db
-      .select({ versionId: books.currentVersionId })
-      .from(books)
-      .where(eq(books.id, bookId))
-      .get();
-    if (!book) return c.json({ error: "not_found" }, 404);
+    // 一条语句按当前版本取目录，切换版本时不会读到新旧混合的目录。
     const list = await db
       .select({ order: chapters.ord, title: chapters.title })
       .from(chapters)
-      .where(eq(chapters.versionId, book.versionId))
+      .innerJoin(books, eq(books.currentVersionId, chapters.versionId))
+      .where(eq(books.id, bookId))
       .orderBy(chapters.ord);
+    if (list.length === 0) return c.json({ error: "not_found" }, 404);
     return c.json({
       chapters: list.map((ch) => ({ title: ch.title, url: `${bookUrl(bookId)}/chapters/${ch.order}` })),
     });
