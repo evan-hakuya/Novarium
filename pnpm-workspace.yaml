@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  # better-sqlite3 13 自带各平台的预编译二进制，不需要 node-gyp 构建。
+  better-sqlite3: false
+  esbuild: true
+  workerd: true

@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["./worker-configuration.d.ts"]
+  },
+  "include": ["src/worker.ts", "src/app.ts", "src/db", "src/storage/types.ts", "src/storage/r2.ts"]
+}
