@@ -74,9 +74,18 @@ export async function fetchOriginal(bookId: string): Promise<ArrayBuffer> {
 export async function saveNewVersion(
   bookId: string,
   draft: { text: Uint8Array; chapters: ChapterDraft[]; options: ProcessOptions },
-  onStep?: (step: "text" | "index") => void,
+  onStep?: (step: "original" | "text" | "index") => void,
+  /** 同时替换原稿：把重复导入的原稿作为这本书的新版本。 */
+  original?: File,
 ) {
   const versionId = crypto.randomUUID();
+  let replacement: { uploadId: string; name: string } | undefined;
+  if (original) {
+    const uploadId = crypto.randomUUID();
+    onStep?.("original");
+    await request(`/api/admin/books/${bookId}/originals/${uploadId}`, { method: "PUT", body: original });
+    replacement = { uploadId, name: original.name };
+  }
   onStep?.("text");
   await request(`/api/admin/books/${bookId}/versions/${versionId}/text`, {
     method: "PUT",
@@ -86,10 +95,26 @@ export async function saveNewVersion(
   await request(`/api/admin/books/${bookId}/versions`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ versionId, options: draft.options, chapters: draft.chapters }),
+    body: JSON.stringify({ versionId, options: draft.options, chapters: draft.chapters, original: replacement }),
   });
   return versionId;
 }
+
+export interface DuplicateBook {
+  id: string;
+  title: string;
+  author: string;
+  originalName: string;
+  chapterCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 书库中与给定书名、作者完全相同的书。 */
+export const findDuplicates = (title: string, author: string) =>
+  request<{ books: DuplicateBook[] }>(
+    `/api/admin/books/duplicates?${new URLSearchParams({ title: title.trim(), author: author.trim() })}`,
+  ).then((r) => r.books);
 
 /** 导入一本书：先上传原稿与版本正文，再提交元数据与章节索引。返回书 ID。 */
 export async function importBook(book: NewBook, onStep?: (step: "original" | "text" | "index") => void) {

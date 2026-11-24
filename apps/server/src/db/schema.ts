@@ -26,6 +26,8 @@ export const books = sqliteTable("books", {
   author: text("author").notNull().default(""),
   originalName: text("original_name").notNull(),
   originalSize: integer("original_size").notNull(),
+  /** 原稿在存储中的键名。为空时是导入时的 books/{id}/original；以新版本替换原稿后指向新文件。 */
+  originalKey: text("original_key"),
   currentVersionId: text("current_version_id").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
