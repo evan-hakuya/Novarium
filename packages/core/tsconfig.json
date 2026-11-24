@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023", "WebWorker"]
+    "lib": ["ES2023", "WebWorker"],
+    // 移植的 novel-processor 代码按上游原样保留，便于同步；它不是按这个选项写的。
+    "noUncheckedIndexedAccess": false
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/test-helpers.ts"]
 }
