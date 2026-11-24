@@ -2,6 +2,7 @@ import { useState } from "react";
 import { checkChapterPattern, type ProcessOptions } from "@novarium/core";
 import { CleaningStepsForm } from "@/components/process-options-form";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -39,7 +40,7 @@ export function OptionsPanel({
               id="chapter-pattern"
               value={patternDraft}
               disabled={disabled}
-              placeholder="留空使用内置规则，例如 ^卷.+$"
+              placeholder="留空只用内置规则，例如 ^个人番外"
               aria-invalid={!!patternError}
               onChange={(e) => setPatternDraft(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && applyPattern()}
@@ -49,8 +50,18 @@ export function OptionsPanel({
             </Button>
           </div>
           {patternError && <span className="text-xs text-destructive">{patternError}</span>}
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={options.chapterPatternMode === "replace"}
+              disabled={disabled}
+              onCheckedChange={(v) => onChange({ ...options, chapterPatternMode: v === true ? "replace" : "extend" })}
+            />
+            只用本书正则，不用内置规则
+          </label>
           <span className="text-xs text-muted-foreground">
-            每行单独匹配。过滤词表（{options.filterWords.length} 个词）在「设置」中维护。
+            默认补充内置规则：内置规则或本书正则任一命中的行都是章节标题。只匹配不超过 40 字的行，正文长句不会被当作标题。
+            内置规则由多条正则、标题长度和句末标点等判断组合而成，不是单个正则，所以不能填入这里。过滤词表（
+            {options.filterWords.length} 个词）在「设置」中维护。
           </span>
         </div>
       </div>

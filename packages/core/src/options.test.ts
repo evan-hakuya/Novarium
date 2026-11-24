@@ -6,6 +6,12 @@ describe("parseProcessOptions", () => {
     expect(parseProcessOptions(DEFAULT_PROCESS_OPTIONS)).toEqual({ ok: true, options: DEFAULT_PROCESS_OPTIONS });
   });
 
+  it("keeps replace mode for patterns saved before the mode existed", () => {
+    const { chapterPatternMode: _, ...legacy } = DEFAULT_PROCESS_OPTIONS;
+    const result = parseProcessOptions({ ...legacy, chapterPattern: "^卷.+$" });
+    expect(result.ok && result.options.chapterPatternMode).toBe("replace");
+  });
+
   it("normalizes filter words and drops unknown keys", () => {
     const result = parseProcessOptions({
       ...DEFAULT_PROCESS_OPTIONS,

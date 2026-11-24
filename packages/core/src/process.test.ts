@@ -47,4 +47,13 @@ describe("processManuscript", () => {
     expect(text).toContain("第三章节的通关目标已经确定。");
     expect(chapters.map((c) => c.title)).toEqual(["第一章 开始"]);
   });
+
+  it("keeps lines matched by the book's chapter pattern apart from the following prose", async () => {
+    const raw = "第一章 开始\n正文。\n个人番外篇 : 甲：与你相配\n甲最近突然对蛋糕产生了兴趣\n于是去了商店。";
+    const { chapters } = await processManuscript(new TextEncoder().encode(raw), {
+      ...DEFAULT_PROCESS_OPTIONS,
+      chapterPattern: "^个人番外",
+    });
+    expect(chapters.map((c) => c.title)).toEqual(["第一章 开始", "个人番外篇 : 甲：与你相配"]);
+  });
 });
