@@ -118,7 +118,12 @@ export function ImportPage() {
               提交
             </Button>
           </div>
-          <PreviewBrowser version={version} />
+          <PreviewBrowser
+            version={version}
+            options={preview.options}
+            onChangeOptions={(next) => source && void run(source.bytes, next)}
+            disabled={uploading}
+          />
         </>
       )}
     </div>

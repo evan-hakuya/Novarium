@@ -20,6 +20,7 @@ describe("parseProcessOptions", () => {
   });
 
   it.each([
+    ["non-boolean reorder", { ...DEFAULT_PROCESS_OPTIONS, reorderByNumber: "yes" }],
     ["missing boolean", { ...DEFAULT_PROCESS_OPTIONS, indent: undefined }],
     ["bad regex", { ...DEFAULT_PROCESS_OPTIONS, chapterPattern: "(" }],
     ["empty regex", { ...DEFAULT_PROCESS_OPTIONS, chapterPattern: "" }],
@@ -30,5 +31,10 @@ describe("parseProcessOptions", () => {
     ["null", null],
   ])("rejects %s", (_name, value) => {
     expect(parseProcessOptions(value).ok).toBe(false);
+  });
+
+  it("treats options saved before reorderByNumber existed as not reordered", () => {
+    const { reorderByNumber: _, ...legacy } = DEFAULT_PROCESS_OPTIONS;
+    expect(parseProcessOptions(legacy)).toEqual({ ok: true, options: DEFAULT_PROCESS_OPTIONS });
   });
 });

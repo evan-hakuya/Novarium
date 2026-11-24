@@ -24,6 +24,8 @@ export interface ProcessOptions {
   filterMaxLineLength: number;
   /** 本书的章节标题正则；为 null 时使用内置规则。 */
   chapterPattern: string | null;
+  /** 按章节序号重排阅读顺序。只按书设置，由所有者在预览中决定；系统不自动重排。 */
+  reorderByNumber: boolean;
 }
 
 export const DEFAULT_PROCESS_OPTIONS: Readonly<ProcessOptions> = Object.freeze({
@@ -39,6 +41,7 @@ export const DEFAULT_PROCESS_OPTIONS: Readonly<ProcessOptions> = Object.freeze({
   filterWords: [],
   filterMaxLineLength: 0,
   chapterPattern: null,
+  reorderByNumber: false,
 });
 
 /** 过滤词表的上限，防止异常输入。 */
@@ -95,10 +98,20 @@ export function parseProcessOptions(
       return { ok: false, error: "chapterPattern is not a valid regular expression" };
     }
   }
+  // 早期保存的整理选项没有这一项，视为不重排。
+  const reorder = v.reorderByNumber ?? false;
+  if (typeof reorder !== "boolean") return { ok: false, error: "reorderByNumber must be a boolean" };
   const options = { ...DEFAULT_PROCESS_OPTIONS } as ProcessOptions;
   for (const key of BOOLEAN_KEYS) options[key] = v[key] as boolean;
   return {
     ok: true,
-    options: { ...options, specialStart: v.specialStart, filterWords, filterMaxLineLength: max, chapterPattern: pattern },
+    options: {
+      ...options,
+      specialStart: v.specialStart,
+      filterWords,
+      filterMaxLineLength: max,
+      chapterPattern: pattern,
+      reorderByNumber: reorder,
+    },
   };
 }

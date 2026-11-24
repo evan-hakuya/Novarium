@@ -92,7 +92,12 @@ export function ReprocessPage() {
               保存为新版本
             </Button>
           </div>
-          <PreviewBrowser version={version} />
+          <PreviewBrowser
+            version={version}
+            options={preview.options}
+            onChangeOptions={(next) => void run(original.data, next)}
+            disabled={saving}
+          />
         </>
       )}
     </div>

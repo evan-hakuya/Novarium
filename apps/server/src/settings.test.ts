@@ -27,13 +27,14 @@ describe("整理选项", () => {
     expect(await getDefaults()).toEqual(DEFAULT_PROCESS_OPTIONS);
   });
 
-  it("保存默认整理选项与过滤词表；默认值不保存章节正则", async () => {
+  it("保存默认整理选项与过滤词表；默认值不保存章节正则与按序号重排", async () => {
     const res = await putDefaults({
       ...DEFAULT_PROCESS_OPTIONS,
       indent: false,
       filterWords: ["加群", " 加群 ", "最新章节"],
       filterMaxLineLength: 30,
       chapterPattern: "^卷.+$",
+      reorderByNumber: true,
     });
     expect(res.status).toBe(200);
     expect(await getDefaults()).toEqual({
