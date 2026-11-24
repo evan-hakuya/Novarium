@@ -30,6 +30,12 @@ const deps: AppDeps = {
   db,
   storage: createFsStorage(join(dataDir, "books")),
   ownerPassword: process.env.OWNER_PASSWORD || undefined,
+  // better-sqlite3 是同步驱动：在一个事务中依次执行。
+  batch: async (queries) => {
+    sqlite.transaction(() => {
+      for (const query of queries) (query as unknown as { run(): unknown }).run();
+    })();
+  },
 };
 if (!deps.ownerPassword) {
   console.warn(JSON.stringify({ message: "OWNER_PASSWORD is not set; owner login is disabled" }));

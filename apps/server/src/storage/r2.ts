@@ -15,5 +15,8 @@ export function createR2Storage(bucket: R2Bucket): StorageProvider {
     async exists(key) {
       return (await bucket.head(key)) !== null;
     },
+    async size(key) {
+      return (await bucket.head(key))?.size ?? null;
+    },
   };
 }

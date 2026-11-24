@@ -40,6 +40,14 @@ export function createFsStorage(root: string): StorageProvider {
     async exists(key) {
       return exists(pathOf(key));
     },
+    async size(key) {
+      try {
+        const s = await stat(pathOf(key));
+        return s.isFile() ? s.size : null;
+      } catch {
+        return null;
+      }
+    },
   };
 }
 

@@ -10,6 +10,7 @@ import {
   setSessionCookie,
   verifyPassword,
 } from "./auth";
+import { createBookRoutes, type BatchQuery } from "./books";
 import type { Db } from "./db";
 import type { StorageProvider } from "./storage/types";
 
@@ -21,6 +22,8 @@ export interface AppDeps {
   storage: StorageProvider;
   // 部署时设置的所有者密码；未设置时无法登录。
   ownerPassword: string | undefined;
+  /** 原子地执行一组写入：全部成功或全部不生效。 */
+  batch(queries: [BatchQuery, ...BatchQuery[]]): Promise<void>;
 }
 
 type Env = { Variables: { deps: AppDeps } };
@@ -73,6 +76,7 @@ export function createApi(getDeps: (c: { env: unknown }) => AppDeps) {
 
   // 所有者 API 都挂在 /api/admin 下。
   api.use("/admin/*", requireOwner<Env>((c) => c.get("deps").ownerPassword));
+  api.route("/admin", createBookRoutes());
 
   api.notFound((c) => c.json({ error: "not_found" }, 404));
 

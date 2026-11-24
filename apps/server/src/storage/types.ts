@@ -9,4 +9,6 @@ export interface StorageProvider {
   get(key: string, range?: ByteRange): Promise<ReadableStream<Uint8Array> | null>;
   delete(key: string): Promise<void>;
   exists(key: string): Promise<boolean>;
+  /** 对象的字节数；对象不存在时返回 null。 */
+  size(key: string): Promise<number | null>;
 }

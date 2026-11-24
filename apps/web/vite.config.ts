@@ -5,6 +5,8 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // ES 模块格式的 Worker 才能按需拆分 jschardet，UTF-8 原稿不必下载它。
+  worker: { format: "es" },
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
