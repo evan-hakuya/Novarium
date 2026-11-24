@@ -4,10 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { ReviewItem, ReviewStatus } from "@/lib/number-review";
+import { ANOMALY_KINDS, itemKind, type ReviewItem, type ReviewStatus } from "@/lib/number-review";
 import { cn } from "@/lib/utils";
 
 type Tab = ReviewStatus | "all";
+type KindTab = ReturnType<typeof itemKind> | "all";
 
 const TABS: { value: Tab; label: string }[] = [
   { value: "pending", label: "待处理" },
@@ -57,8 +58,16 @@ export function NumberReviewPanel({
     return c;
   }, [items]);
   const [tab, setTab] = useState<Tab>(counts.pending > 0 ? "pending" : "all");
+  const [kind, setKind] = useState<KindTab>("all");
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const visible = useMemo(() => (tab === "all" ? items : items.filter((i) => i.status === tab)), [items, tab]);
+  // 第一行按处理状态筛选，第二行在其中按异常类型筛选。
+  const inStatus = useMemo(() => (tab === "all" ? items : items.filter((i) => i.status === tab)), [items, tab]);
+  const kindCounts = useMemo(() => {
+    const c = Object.fromEntries(ANOMALY_KINDS.map((k) => [k.kind, 0])) as Record<string, number>;
+    for (const item of inStatus) c[itemKind(item)]!++;
+    return c;
+  }, [inStatus]);
+  const visible = useMemo(() => (kind === "all" ? inStatus : inStatus.filter((i) => itemKind(i) === kind)), [inStatus, kind]);
 
   // 切换标签页或处理后，只保留仍在当前标签页中的勾选。
   useEffect(() => {
@@ -100,6 +109,16 @@ export function NumberReviewPanel({
           {TABS.map((t) => (
             <TabsTrigger key={t.value} value={t.value}>
               {t.label} {counts[t.value]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      <Tabs value={kind} onValueChange={(v) => setKind(v as KindTab)}>
+        <TabsList variant="line">
+          <TabsTrigger value="all">全部类型 {inStatus.length}</TabsTrigger>
+          {ANOMALY_KINDS.map((k) => (
+            <TabsTrigger key={k.kind} value={k.kind}>
+              {k.label} {kindCounts[k.kind]}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -147,7 +166,10 @@ export function NumberReviewPanel({
       )}
 
       {visible.length === 0 ? (
-        <p className="text-muted-foreground">没有{TABS.find((t) => t.value === tab)!.label}的异常。</p>
+        <p className="text-muted-foreground">
+          没有{tab === "all" ? "" : TABS.find((t) => t.value === tab)!.label}
+          {kind === "all" ? "" : `的${ANOMALY_KINDS.find((k) => k.kind === kind)!.label}`}异常。
+        </p>
       ) : (
         <ul className="flex max-h-72 flex-col overflow-y-auto">
           {visible.slice(0, MAX_RENDERED).map((item) => (

@@ -36,6 +36,18 @@ export function reviewNumbers(chapters: readonly ChapterDraft[], options: Proces
 
 export const countPending = (items: readonly ReviewItem[]) => items.filter((i) => i.status === "pending").length;
 
+/** 内置的章节序号异常类型，按显示顺序排列。 */
+export const ANOMALY_KINDS: { kind: NumberAnomaly["kind"]; label: string }[] = [
+  { kind: "outOfOrder", label: "乱序" },
+  { kind: "missing", label: "缺号" },
+  { kind: "duplicate", label: "重复编号" },
+  { kind: "sectionReset", label: "分卷边界" },
+];
+
+/** 一条异常的类型。已修复的只可能是乱序。 */
+export const itemKind = (item: ReviewItem): NumberAnomaly["kind"] =>
+  item.status === "fixed" ? "outOfOrder" : item.anomaly.kind;
+
 /** 章节列表中要标出的章节：还待处理的异常所在的章节。 */
 export function pendingOrders(items: readonly ReviewItem[]): Set<number> {
   const orders = new Set<number>();
