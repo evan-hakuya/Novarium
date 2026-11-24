@@ -13,6 +13,7 @@ import {
 import { createBookRoutes, type BatchQuery } from "./books";
 import type { Db } from "./db";
 import { createSourceRoutes, IMPORT_BASE, SOURCE_BASE } from "./source";
+import { createSettingsRoutes } from "./settings";
 import type { StorageProvider } from "./storage/types";
 import { createImportRoutes, createTokenRoutes, requireAccessToken } from "./tokens";
 
@@ -80,6 +81,7 @@ export function createApi(getDeps: (c: { env: unknown }) => AppDeps) {
   api.use("/admin/*", requireOwner<Env>((c) => c.get("deps").ownerPassword));
   api.route("/admin", createBookRoutes());
   api.route("/admin", createTokenRoutes());
+  api.route("/admin", createSettingsRoutes());
 
   // 阅读客户端用的书源 API，凭访问令牌访问。
   const sourcePath = SOURCE_BASE.slice("/api".length);

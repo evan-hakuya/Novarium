@@ -14,6 +14,8 @@ export interface BookSummary {
 
 export interface BookDetail {
   book: { id: string; title: string; author: string; originalName: string; originalSize: number };
+  /** 当前版本。options 是生成它的整理选项。 */
+  version: { options: ProcessOptions; createdAt: string } | null;
   chapters: { order: number; title: string; number: number | null; byteLength: number }[];
 }
 

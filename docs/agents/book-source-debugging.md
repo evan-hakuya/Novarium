@@ -2,6 +2,8 @@
 
 用本机 Docker 中的 reader（`changshengyu/reader`，内置 Legado 规则引擎）调试书源，不需要手机。
 
+**验收基准**：书源相关的验收以 reader 测试为准。只有所有者明确要求时才做「阅读」App 真机验证。
+
 - reader 地址：`http://localhost:14396`，API 前缀 `/reader3`，未开启登录鉴权。
 - reader 在容器中，用 `host.docker.internal` 访问本机服务。`wrangler dev` 必须加 `--ip 0.0.0.0`。
 
@@ -17,4 +19,4 @@
    - `GET /reader3/getBookContent?url=<bookUrl>&index=<章节序号>&bookSourceUrl=<书源地址>`
 5. 在 `wrangler dev` 日志中核对 `/api/source/*` 请求全部是 200；出现 401 说明请求头没有带上访问令牌。
 
-reader 的行为接近 Legado App，但不完全相同。真机验证仍以「阅读」App 为准。
+reader 的行为接近 Legado App，但不完全相同。两者结果不一致时，记录差异并告诉所有者。

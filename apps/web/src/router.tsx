@@ -15,6 +15,7 @@ import { BookPage } from "./pages/book";
 import { BooksPage } from "./pages/books";
 import { ImportPage } from "./pages/import";
 import { LoginPage } from "./pages/login";
+import { SettingsPage } from "./pages/settings";
 import { TokensPage } from "./pages/tokens";
 
 interface RouterContext {
@@ -77,6 +78,9 @@ function OwnerLayout() {
             <Link to="/tokens" activeProps={{ className: "text-foreground" }}>
               访问令牌
             </Link>
+            <Link to="/settings" activeProps={{ className: "text-foreground" }}>
+              设置
+            </Link>
           </nav>
         </div>
         <Button variant="ghost" size="sm" onClick={onLogout}>
@@ -114,11 +118,17 @@ const tokensRoute = createRoute({
   component: TokensPage,
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => ownerRoute,
+  path: "/settings",
+  component: SettingsPage,
+});
+
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
     routeTree: rootRoute.addChildren([
       loginRoute,
-      ownerRoute.addChildren([booksRoute, importRoute, bookRoute, tokensRoute]),
+      ownerRoute.addChildren([booksRoute, importRoute, bookRoute, tokensRoute, settingsRoute]),
     ]),
     context: { queryClient },
   });

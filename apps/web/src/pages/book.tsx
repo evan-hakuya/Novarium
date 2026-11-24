@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
+import type { ProcessOptions } from "@novarium/core";
 import { describeError, fetchBook, fetchChapter, formatBytes } from "@/api/books";
 import { ChapterBrowser, ChapterText } from "@/components/chapter-browser";
+import { STEPS } from "@/components/process-options-form";
 
 const route = getRouteApi("/owner/books/$bookId");
 
@@ -11,7 +13,7 @@ export function BookPage() {
 
   if (detail.isPending) return <p className="text-sm text-muted-foreground">加载中</p>;
   if (detail.isError) return <p className="text-sm text-destructive">{describeError(detail.error)}</p>;
-  const { book, chapters } = detail.data;
+  const { book, version, chapters } = detail.data;
 
   return (
     <div className="flex flex-col gap-4">
@@ -23,6 +25,7 @@ export function BookPage() {
         <p className="text-sm text-muted-foreground">
           {book.author || "佚名"} · {chapters.length} 章 · 原稿 {book.originalName}（{formatBytes(book.originalSize)}）
         </p>
+        {version && <OptionsSummary options={version.options} />}
       </div>
       <ChapterBrowser chapters={chapters} renderContent={(c) => <RemoteChapter bookId={bookId} order={c.order} />} />
     </div>
@@ -38,4 +41,15 @@ function RemoteChapter({ bookId, order }: { bookId: string; order: number }) {
   if (chapter.isPending) return <p className="text-sm text-muted-foreground">加载中</p>;
   if (chapter.isError) return <p className="text-sm text-destructive">{describeError(chapter.error)}</p>;
   return <ChapterText text={chapter.data.content} />;
+}
+
+/** 当前版本的整理选项摘要。 */
+function OptionsSummary({ options }: { options: Partial<ProcessOptions> }) {
+  const steps = STEPS.filter((s) => options[s.key]).map((s) => s.label);
+  const parts = [
+    `清洗：${steps.join("、") || "无"}`,
+    `章节正则：${options.chapterPattern ?? "内置规则"}`,
+    `过滤词 ${options.filterWords?.length ?? 0} 个（阈值 ${options.filterMaxLineLength || "不限"}）`,
+  ];
+  return <p className="mt-1 text-xs text-muted-foreground">整理选项 · {parts.join(" · ")}</p>;
 }

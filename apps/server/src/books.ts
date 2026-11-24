@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { BatchItem } from "drizzle-orm/batch";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { validateChapterIndex } from "@novarium/core/validate";
+import { parseProcessOptions, validateChapterIndex } from "@novarium/core/validate";
 import type { AppDeps } from "./app";
 import { books, chapters, pendingUploads, versions } from "./db/schema";
 import { isUuid, originalKey, versionTextKey } from "./storage/keys";
@@ -46,7 +46,8 @@ export function createBookRoutes() {
     if (typeof title !== "string" || !title.trim() || title.length > 200) return c.json({ error: "invalid_title" }, 400);
     if (typeof author !== "string" || author.length > 100) return c.json({ error: "invalid_author" }, 400);
     if (typeof originalName !== "string" || originalName.length > 255) return c.json({ error: "invalid_original_name" }, 400);
-    if (!options || typeof options !== "object") return c.json({ error: "invalid_options" }, 400);
+    const parsedOptions = parseProcessOptions(options);
+    if (!parsedOptions.ok) return c.json({ error: "invalid_options", details: [parsedOptions.error] }, 400);
     if (await bookExists(db, id)) return c.json({ error: "book_exists" }, 409);
 
     const [originalSize, textSize] = await Promise.all([
@@ -65,7 +66,7 @@ export function createBookRoutes() {
       db.insert(versions).values({
         id: versionId,
         bookId: id,
-        options,
+        options: parsedOptions.options,
         textSize,
         chapterCount: index.length,
         createdAt: now,
@@ -116,12 +117,17 @@ export function createBookRoutes() {
     const { db } = c.get("deps");
     const book = await db.select().from(books).where(eq(books.id, c.req.param("bookId"))).get();
     if (!book) return c.json({ error: "not_found" }, 404);
+    const version = await db
+      .select({ options: versions.options, createdAt: versions.createdAt })
+      .from(versions)
+      .where(eq(versions.id, book.currentVersionId))
+      .get();
     const list = await db
       .select({ order: chapters.ord, title: chapters.title, number: chapters.number, byteLength: chapters.byteLength })
       .from(chapters)
       .where(eq(chapters.versionId, book.currentVersionId))
       .orderBy(chapters.ord);
-    return c.json({ book, chapters: list });
+    return c.json({ book, version, chapters: list });
   });
 
   app.get("/books/:bookId/chapters/:order", async (c) => {
