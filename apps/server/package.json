@@ -8,8 +8,8 @@
     "dev": "wrangler d1 migrations apply DB --local && wrangler dev",
     "dev:node": "pnpm build && node dist/node.js",
     "build": "esbuild src/node.ts --bundle --platform=node --target=node24 --format=esm --external:better-sqlite3 --outfile=dist/node.js",
-    "typecheck": "tsc -p tsconfig.worker.json && tsc -p tsconfig.node.json",
-    "test": "echo \"no tests\"",
+    "typecheck": "tsc -p tsconfig.worker.json && tsc -p tsconfig.node.json && tsc -p tsconfig.test.json",
+    "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "cf-typegen": "wrangler types",
     "deploy:cf": "wrangler deploy && wrangler d1 migrations apply DB --remote"

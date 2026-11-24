@@ -1,0 +1,225 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { beforeEach, describe, expect, it } from "vitest";
+import { createApi, type AppDeps } from "./app";
+import { createSessionValue, SESSION_COOKIE } from "./auth";
+import * as schema from "./db/schema";
+import { createFsStorage } from "./storage/fs";
+import { versionTextKey } from "./storage/keys";
+
+// 书源契约测试：按 Legado 的方式使用导出的书源 JSON——
+// 每个请求都带上 `header` 中的请求头，相对链接按当前请求地址补全，规则是 `$.x` / `$.x[*]` 形式的 JsonPath。
+
+const ORIGIN = "https://novarium.example";
+const PASSWORD = "test-password";
+const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));
+
+function createTestApp() {
+  const sqlite = new Database(":memory:");
+  const db = drizzle(sqlite, { schema });
+  migrate(db, { migrationsFolder });
+  const deps: AppDeps = {
+    runtime: "node",
+    db,
+    storage: createFsStorage(mkdtempSync(join(tmpdir(), "novarium-test-"))),
+    ownerPassword: PASSWORD,
+    batch: async (queries) => {
+      sqlite.transaction(() => {
+        for (const query of queries) (query as unknown as { run(): unknown }).run();
+      })();
+    },
+  };
+  const api = createApi(() => deps);
+  const fetchApi = async (path: string, init?: RequestInit) => api.request(new URL(path, ORIGIN).toString(), init);
+  return { deps, fetchApi };
+}
+
+async function addBook(deps: AppDeps, id: string, title: string, author: string, chapterTexts: [string, string][]) {
+  const versionId = crypto.randomUUID();
+  const encoder = new TextEncoder();
+  let offset = 0;
+  const index = chapterTexts.map(([chapterTitle, body], order) => {
+    const byteLength = encoder.encode(body).length;
+    const entry = { versionId, ord: order, title: chapterTitle, number: order + 1, byteOffset: offset, byteLength };
+    offset += byteLength;
+    return entry;
+  });
+  await deps.storage.put(versionTextKey(id, versionId), encoder.encode(chapterTexts.map(([, body]) => body).join("")));
+  const now = new Date();
+  await deps.db.insert(schema.versions).values({ id: versionId, bookId: id, options: {}, textSize: offset, chapterCount: index.length, createdAt: now });
+  await deps.db.insert(schema.chapters).values(index);
+  await deps.db.insert(schema.books).values({ id, title, author, originalName: `${title}.txt`, originalSize: offset, currentVersionId: versionId, createdAt: now, updatedAt: now });
+}
+
+type BookSource = {
+  bookSourceUrl: string;
+  header: string;
+  searchUrl: string;
+  ruleSearch: Record<string, string>;
+  ruleBookInfo: Record<string, string>;
+  ruleToc: Record<string, string>;
+  ruleContent: Record<string, string>;
+};
+
+function jsonPath(data: unknown, rule: string): any {
+  const match = /^\$\.(\w+)(\[\*\])?$/.exec(rule);
+  if (!match) throw new Error(`unsupported rule ${rule}`);
+  return (data as Record<string, unknown>)[match[1]!];
+}
+
+/** 一个只懂 JSON 书源的极简 Legado。 */
+function legadoClient(source: BookSource, fetchApi: (url: string, init?: RequestInit) => Promise<Response>) {
+  const headers = JSON.parse(source.header) as Record<string, string>;
+  const requested: { url: string; authorization: string | undefined }[] = [];
+  async function get(url: string) {
+    requested.push({ url, authorization: headers.Authorization });
+    const res = await fetchApi(url, { headers });
+    expect(res.status, url).toBe(200);
+    return { url, body: await res.json() };
+  }
+  return {
+    requested,
+    async search(key: string, page = 1) {
+      const url = new URL(
+        source.searchUrl.replace("{{key}}", encodeURIComponent(key)).replace("{{page}}", String(page)),
+        source.bookSourceUrl,
+      ).toString();
+      const res = await get(url);
+      return (jsonPath(res.body, source.ruleSearch.bookList!) as unknown[]).map((item) => ({
+        name: jsonPath(item, source.ruleSearch.name!),
+        author: jsonPath(item, source.ruleSearch.author!),
+        lastChapter: jsonPath(item, source.ruleSearch.lastChapter!),
+        bookUrl: new URL(jsonPath(item, source.ruleSearch.bookUrl!), url).toString(),
+      }));
+    },
+    async bookInfo(bookUrl: string) {
+      const res = await get(bookUrl);
+      return {
+        name: jsonPath(res.body, source.ruleBookInfo.name!),
+        tocUrl: new URL(jsonPath(res.body, source.ruleBookInfo.tocUrl!), bookUrl).toString(),
+      };
+    },
+    async toc(tocUrl: string) {
+      const res = await get(tocUrl);
+      return (jsonPath(res.body, source.ruleToc.chapterList!) as unknown[]).map((item) => ({
+        name: jsonPath(item, source.ruleToc.chapterName!),
+        url: new URL(jsonPath(item, source.ruleToc.chapterUrl!), tocUrl).toString(),
+      }));
+    },
+    async content(chapterUrl: string) {
+      const res = await get(chapterUrl);
+      return jsonPath(res.body, source.ruleContent.content!) as string;
+    },
+  };
+}
+
+describe("书源", () => {
+  let app: ReturnType<typeof createTestApp>;
+  let ownerCookie: string;
+
+  async function createToken(name: string) {
+    const res = await app.fetchApi("/api/admin/tokens", {
+      method: "POST",
+      headers: { cookie: ownerCookie, "content-type": "application/json", origin: ORIGIN },
+      body: JSON.stringify({ name }),
+    });
+    expect(res.status).toBe(201);
+    return (await res.json()) as { token: { id: string }; bookSource: BookSource };
+  }
+
+  beforeEach(async () => {
+    app = createTestApp();
+    ownerCookie = `${SESSION_COOKIE}=${await createSessionValue(PASSWORD)}`;
+    await addBook(app.deps, "11111111-1111-4111-8111-111111111111", "归藏试读", "无名氏", [
+      ["第一章 开端", "第一章 开端\n正文一。\n"],
+      ["第二章 归来", "第二章 归来\n正文二，含中文与 emoji 🌙。\n"],
+    ]);
+    await addBook(app.deps, "22222222-2222-4222-8222-222222222222", "100%_纯净", "张三", [["序", "序\n内容\n"]]);
+  });
+
+  it("按 Legado 的方式完成搜索、详情、目录与正文，每个请求都带访问令牌", async () => {
+    const { bookSource } = await createToken("我的手机");
+    expect(bookSource.bookSourceUrl).toBe(ORIGIN);
+    expect(JSON.stringify(bookSource)).not.toMatch(/[?&]token=/);
+    const client = legadoClient(bookSource, app.fetchApi);
+
+    const results = await client.search("归藏");
+    expect(results).toEqual([
+      {
+        name: "归藏试读",
+        author: "无名氏",
+        lastChapter: "第二章 归来",
+        bookUrl: `${ORIGIN}/api/source/books/11111111-1111-4111-8111-111111111111`,
+      },
+    ]);
+    const info = await client.bookInfo(results[0]!.bookUrl);
+    expect(info.name).toBe("归藏试读");
+    const toc = await client.toc(info.tocUrl);
+    expect(toc.map((ch) => ch.name)).toEqual(["第一章 开端", "第二章 归来"]);
+    expect(await client.content(toc[1]!.url)).toBe("第二章 归来\n正文二，含中文与 emoji 🌙。\n");
+
+    expect(client.requested).toHaveLength(4);
+    for (const req of client.requested) {
+      expect(req.url.startsWith(ORIGIN)).toBe(true);
+      expect(req.url).not.toContain("nvr_");
+    }
+  });
+
+  it("按作者搜索，并把 % 与 _ 当作普通字符", async () => {
+    const client = legadoClient((await createToken("平板")).bookSource, app.fetchApi);
+    expect((await client.search("张三")).map((b) => b.name)).toEqual(["100%_纯净"]);
+    expect((await client.search("%_")).map((b) => b.name)).toEqual(["100%_纯净"]);
+    expect(await client.search("%")).toHaveLength(1);
+    expect(await client.search("不存在")).toEqual([]);
+    expect(await client.search("归藏", 2)).toEqual([]);
+  });
+
+  it("拒绝缺少、错误和已撤销的访问令牌", async () => {
+    const { token, bookSource } = await createToken("旧手机");
+    const headers = JSON.parse(bookSource.header) as Record<string, string>;
+    const searchPath = "/api/source/search?q=%E5%BD%92";
+
+    expect((await app.fetchApi(searchPath)).status).toBe(401);
+    expect((await app.fetchApi(searchPath, { headers: { Authorization: "Bearer nvr_wrong" } })).status).toBe(401);
+    expect((await app.fetchApi(searchPath, { headers })).status).toBe(200);
+
+    const revoke = await app.fetchApi(`/api/admin/tokens/${token.id}/revoke`, {
+      method: "POST",
+      headers: { cookie: ownerCookie },
+    });
+    expect(revoke.status).toBe(200);
+    expect((await app.fetchApi(searchPath, { headers })).status).toBe(401);
+    expect((await app.fetchApi("/api/source/books/11111111-1111-4111-8111-111111111111/chapters/0", { headers })).status).toBe(401);
+  });
+
+  it("所有者列出访问令牌，列表不含明文与哈希", async () => {
+    await createToken("我的手机");
+    const { token } = await createToken("平板");
+    await app.fetchApi(`/api/admin/tokens/${token.id}/revoke`, { method: "POST", headers: { cookie: ownerCookie } });
+    const res = await app.fetchApi("/api/admin/tokens", { headers: { cookie: ownerCookie } });
+    const body = (await res.json()) as { tokens: Record<string, unknown>[] };
+    expect(body.tokens.map((t) => [t.name, t.revokedAt !== null])).toEqual([
+      ["平板", true],
+      ["我的手机", false],
+    ]);
+    expect(JSON.stringify(body)).not.toMatch(/nvr_|tokenHash/);
+  });
+
+  it("管理访问令牌需要所有者登录", async () => {
+    expect((await app.fetchApi("/api/admin/tokens")).status).toBe(401);
+    expect((await app.fetchApi("/api/admin/tokens", { method: "POST", body: "{}" })).status).toBe(401);
+  });
+
+  it("不存在的书与章节返回 404", async () => {
+    const headers = JSON.parse((await createToken("手机")).bookSource.header) as Record<string, string>;
+    const id = "11111111-1111-4111-8111-111111111111";
+    expect((await app.fetchApi(`/api/source/books/${crypto.randomUUID()}`, { headers })).status).toBe(404);
+    expect((await app.fetchApi(`/api/source/books/${id}/chapters/9`, { headers })).status).toBe(404);
+    expect((await app.fetchApi(`/api/source/books/${id}/chapters/-1`, { headers })).status).toBe(404);
+  });
+});

@@ -36,7 +36,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
   const body = (await res.json().catch(() => null)) as ({ error?: string; details?: string[] } & T) | null;
   if (!res.ok) throw new ApiError(res.status, body?.error ?? `http_${res.status}`, body?.details);
@@ -91,6 +91,7 @@ const errorText: Record<string, string> = {
   invalid_chapter_index: "章节索引没有通过服务端校验。",
   book_exists: "这本书已经存在。",
   invalid_title: "书名不能为空，且不能超过 200 字。",
+  invalid_name: "名称不能为空，且不能超过 50 字。",
   unauthorized: "登录已失效，请重新登录。",
 };
 
