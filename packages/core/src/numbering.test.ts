@@ -18,6 +18,13 @@ describe("findNumberAnomalies", () => {
       { kind: "outOfOrder", order: 4, number: 4, previous: 5 },
     ]);
   });
+
+  it("把序号重置识别为分卷边界，并在分卷内检查异常", () => {
+    expect(findNumberAnomalies(chapters([1, 2, 1, 2, 4]))).toEqual([
+      { kind: "sectionReset", order: 2, previous: 2 },
+      { kind: "missing", from: 3, to: 3, after: 3 },
+    ]);
+  });
 });
 
 describe("orderByNumber", () => {

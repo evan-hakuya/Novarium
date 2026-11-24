@@ -17,7 +17,10 @@ describe("processManuscript", () => {
       SAMPLE_PROSE,
     ].join("\r\n");
 
-    const { text, chapters } = await processManuscript(encodeAs(raw.repeat(1), "gbk"), DEFAULT_PROCESS_OPTIONS);
+    const { text, chapters } = await processManuscript(encodeAs(raw.repeat(1), "gbk"), {
+      ...DEFAULT_PROCESS_OPTIONS,
+      splitInlineChapterTitles: true,
+    });
 
     expect(text).not.toContain("\r");
     expect(text).not.toContain("请牢记收藏");
@@ -36,5 +39,12 @@ describe("processManuscript", () => {
     });
     expect(text).not.toContain("加群领福利");
     expect(text).toContain("加群的人很多。");
+  });
+
+  it("does not split inline chapter-looking prose by default", async () => {
+    const raw = "第一章 开始\n第三章节的通关目标已经确定。\n正文。";
+    const { text, chapters } = await processManuscript(new TextEncoder().encode(raw), DEFAULT_PROCESS_OPTIONS);
+    expect(text).toContain("第三章节的通关目标已经确定。");
+    expect(chapters.map((c) => c.title)).toEqual(["第一章 开始"]);
   });
 });

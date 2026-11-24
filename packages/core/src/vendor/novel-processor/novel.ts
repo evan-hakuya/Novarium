@@ -112,8 +112,10 @@ export const romanToInt = (s: string): number | null => {
 
 // 从章节标题提取顺序号
 export const extractChapterOrder = (title: string): number | null => {
+  // 带编号的番外标题使用自己的序列，不是正文章节序号。
+  if (/^\s*(?:序章|序言|引子|前言|卷首语|扉页|楔子|终章|后记|附录|尾声|番外)/.test(title)) return null;
   // 常见：第十二章 / 第12章 / 第一万章 / 第壹拾章 / Chapter 5 / CH 5
-  const m = title.match(/第([〇零一二三四五六七八九十百千万两壹贰叁肆伍陆柒捌玖拾佰仟萬\d]+)\s*[章节卷集幕回部篇]/);
+  const m = title.match(/第?([〇零一二三四五六七八九十百千万两壹贰叁肆伍陆柒捌玖拾佰仟萬\d]+)\s*[章节卷集幕回部篇]/);
   if (m) {
     // 纯数字与混合写法("1万"、"2万3千")统一走 chineseNumeralToNumber:
     // 旧的 /\d+/ 短路只取首段数字,单位被丢弃("第1万章" → 1)。
@@ -129,11 +131,6 @@ export const extractChapterOrder = (title: string): number | null => {
     if (r !== null) return r;
   }
 
-  // 带编号的前后置标记标题(番外1/后记2):编号是番外自身的序列,不是正文
-  // 章节号 —— anyNum 兜底会让「番外1」拿到 order=1,reorder 按同号排进第一、
-  // 二章之间(静默内容易位)。返回 null 走「前置留前/后置排后」通道。
-  // 「番外第三章」由上方第X章分支先行命中,不进此守卫。
-  if (/^\s*(?:序章|序言|引子|前言|卷首语|扉页|楔子|终章|后记|附录|尾声|番外)/.test(title)) return null;
   const anyNum = title.match(/\d+/);
   if (anyNum) return parseInt(anyNum[0], 10);
   return null;

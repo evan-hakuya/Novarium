@@ -37,10 +37,10 @@ export const chapterTitleRegex =
 export const CHAPTER_MARKERS = "章节卷集幕回部篇";
 
 // 数字标题正则
-export const numberTitleRegex = /^[ 　\t]{0,4}\d{1,5}([：:,.， 、_—\-]|【.{1,30}】).{0,30}$/;
+export const numberTitleRegex = /^[ 　\t]{0,4}\d{1,5}([：:,.．_—\-]|【.{1,30}】).{0,30}$/;
 
 // 标题严格正则：第 X 章
-export const chapterPattern = /^(第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}章)(.*)$/;
+export const chapterPattern = /^(第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}章(?!节))(.*)$/;
 
 export const novelSectionHeaderRegex = /^(?:作者|(?:内容|作品)?简介|创作|标签)[:：]?/u;
 
@@ -113,9 +113,13 @@ export const detectChapterUnit = (lines: string[]): string | null => {
 export const isChapterTitleLine = (line: string, unit?: string | null): boolean => {
   const t = line.trim();
   if (!t) return false;
+  // 「第三章节」是正文中的复合词，不是「第三章」标题后接正文。
+  if (/^第?\s*[〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟\d]+\s*章节/.test(t)) return false;
   if ([...t].length > CHAPTER_TITLE_MAX_LEN) return false;
   if (!chapterTitleRegex.test(t) && !numberTitleRegex.test(t)) return false;
   const head = t.match(chapterHeadRegex);
+  // 裸「一部……」这类句子不能因为数字与章节单位相邻而成为标题。
+  if (!head && /^[〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟\d]+\s*[章节卷集幕回部篇]/.test(t)) return false;
   // 没有「第X章」这类显式前缀、又以句号收尾 —— 是正文句，不是标题（裸栏目名除外）
   if (!head && sentenceEndRegex.test(t) && !sectionLabelRegex.test(t)) return false;
   // 有显式前缀但标记不是「章」(部/节/集/卷/回…) 且 句号收尾 + 内含逗号 ——
