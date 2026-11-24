@@ -7,6 +7,8 @@ export interface NumberedChapter {
 
 /** 章节序号异常。order 都是阅读顺序，用来在预览中定位章节。 */
 export type NumberAnomaly =
+  /** 序号从较大值重置到 1 的分卷边界候选。 */
+  | { kind: "sectionReset"; order: number; previous: number }
   /** 缺号：序号 from 到 to 不存在，缺口位于阅读顺序为 after 的章节（序号 from - 1）之后。 */
   | { kind: "missing"; from: number; to: number; after: number }
   /** 重复编号：多个章节使用同一个序号。 */
@@ -19,24 +21,35 @@ export function findNumberAnomalies(chapters: readonly NumberedChapter[]): Numbe
   const numbered = chapters.filter((c): c is NumberedChapter & { number: number } => c.number !== null);
   const anomalies: NumberAnomaly[] = [];
 
-  const byNumber = new Map<number, number[]>();
-  for (const c of numbered) byNumber.set(c.number, [...(byNumber.get(c.number) ?? []), c.order]);
+  const sections: (NumberedChapter & { number: number })[][] = [];
+  for (const chapter of numbered) {
+    const previous = sections.at(-1)?.at(-1);
+    if (previous && chapter.number === 1 && previous.number > 1) {
+      anomalies.push({ kind: "sectionReset", order: chapter.order, previous: previous.number });
+      sections.push([]);
+    }
+    if (!sections.length) sections.push([]);
+    sections.at(-1)!.push(chapter);
+  }
 
-  const sorted = [...byNumber.keys()].sort((a, b) => a - b);
-  for (let i = 1; i < sorted.length; i++) {
-    const a = sorted[i - 1]!;
-    const b = sorted[i]!;
-    if (b - a > 1) anomalies.push({ kind: "missing", from: a + 1, to: b - 1, after: byNumber.get(a)![0]! });
-  }
-  for (const n of sorted) {
-    const orders = byNumber.get(n)!;
-    if (orders.length > 1) anomalies.push({ kind: "duplicate", number: n, orders });
-  }
-  for (let i = 1; i < numbered.length; i++) {
-    const prev = numbered[i - 1]!;
-    const cur = numbered[i]!;
-    if (cur.number < prev.number) {
-      anomalies.push({ kind: "outOfOrder", order: cur.order, number: cur.number, previous: prev.number });
+  for (const section of sections) {
+    const byNumber = new Map<number, number[]>();
+    for (const c of section) byNumber.set(c.number, [...(byNumber.get(c.number) ?? []), c.order]);
+
+    const sorted = [...byNumber.keys()].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i++) {
+      const a = sorted[i - 1]!;
+      const b = sorted[i]!;
+      if (b - a > 1) anomalies.push({ kind: "missing", from: a + 1, to: b - 1, after: byNumber.get(a)![0]! });
+    }
+    for (const n of sorted) {
+      const orders = byNumber.get(n)!;
+      if (orders.length > 1) anomalies.push({ kind: "duplicate", number: n, orders });
+    }
+    for (let i = 1; i < section.length; i++) {
+      const prev = section[i - 1]!;
+      const cur = section[i]!;
+      if (cur.number < prev.number) anomalies.push({ kind: "outOfOrder", order: cur.order, number: cur.number, previous: prev.number });
     }
   }
   return anomalies;

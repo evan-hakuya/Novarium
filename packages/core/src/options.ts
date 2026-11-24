@@ -32,7 +32,7 @@ export const DEFAULT_PROCESS_OPTIONS: Readonly<ProcessOptions> = Object.freeze({
   smartLineBreak: true,
   indent: true,
   trimLines: true,
-  splitInlineChapterTitles: true,
+  splitInlineChapterTitles: false,
   mergeDuplicateChapterTitles: true,
   removeDuplicateLines: true,
   paragraphSplit: false,

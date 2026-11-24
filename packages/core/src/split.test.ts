@@ -75,6 +75,24 @@ describe("splitChapters", () => {
     expect(splitChapters(text, builtin).map((c) => c.title)).toEqual(["第一章 开始", "第二章 继续"]);
   });
 
+  it("does not treat numbered lists or bare Chinese number phrases as titles", () => {
+    const text = ["第一章 开始", "1，一项清单", "一部优秀的推理小说是需要逻辑性的：", "正文。"].join("\n");
+    expect(splitChapters(text, builtin).map((c) => c.title)).toEqual(["第一章 开始"]);
+  });
+
+  it("does not treat 章节 as an inline chapter title", () => {
+    const text = "第一章 开始\n第三章节的通关目标已经确定。\n正文。";
+    expect(splitChapters(text, builtin).map((c) => c.title)).toEqual(["第一章 开始"]);
+  });
+
+  it("does not assign a body chapter number to numbered extras", () => {
+    const text = "第一章 开始\n番外：最喜欢的一章\n内容。";
+    expect(splitChapters(text, builtin).map((c) => [c.title, c.number])).toEqual([
+      ["第一章 开始", 1],
+      ["番外：最喜欢的一章", null],
+    ]);
+  });
+
   it("treats the whole text as one chapter when no title is found", () => {
     const text = "只有一段文字。\n没有任何章节标题。";
     const chapters = splitChapters(text, builtin);

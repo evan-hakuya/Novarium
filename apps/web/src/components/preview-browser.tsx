@@ -23,8 +23,10 @@ export function PreviewBrowser({
   disabled?: boolean;
 }) {
   const [selected, setSelected] = useState(0);
-  const anomalies = useMemo(() => findNumberAnomalies(version.chapters), [version.chapters]);
-  const flagged = useMemo(() => new Set(anomalies.flatMap(anomalyOrders)), [anomalies]);
+  const findings = useMemo(() => findNumberAnomalies(version.chapters), [version.chapters]);
+  const sectionResets = useMemo(() => findings.filter((a) => a.kind === "sectionReset"), [findings]);
+  const anomalies = useMemo(() => findings.filter((a) => a.kind !== "sectionReset"), [findings]);
+  const flagged = useMemo(() => new Set(findings.flatMap(anomalyOrders)), [findings]);
 
   // 重新整理后章节可能变少，越界时回到第一章。
   useEffect(() => {
@@ -47,6 +49,7 @@ export function PreviewBrowser({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="font-medium">
             章节序号：{anomalies.length === 0 ? "没有发现异常" : `发现 ${anomalies.length} 处异常`}
+            {sectionResets.length > 0 && `，${sectionResets.length} 个分卷边界候选`}
             {options.reorderByNumber && "（已按序号重排）"}
           </span>
           {options.reorderByNumber ? (
@@ -66,18 +69,18 @@ export function PreviewBrowser({
             )
           )}
         </div>
-        {anomalies.length > 0 && (
+        {findings.length > 0 && (
           <>
             <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto text-muted-foreground">
-              {anomalies.slice(0, MAX_LISTED).map((a, i) => (
+              {findings.slice(0, MAX_LISTED).map((a, i) => (
                 <li key={i}>
                   <AnomalyText anomaly={a} jump={jump} />
                 </li>
               ))}
-              {anomalies.length > MAX_LISTED && <li>另有 {anomalies.length - MAX_LISTED} 处未列出。</li>}
+              {findings.length > MAX_LISTED && <li>另有 {findings.length - MAX_LISTED} 处未列出。</li>}
             </ul>
             <p className="text-xs text-muted-foreground">
-              重排时，序章、番外等没有序号的章节跟随前一个有序号的章节移动。缺号与重复编号需要检查原稿或章节正则。
+              序号从较大值重置到第一章时，系统标记为分卷边界候选。候选已经自动用于分卷内检查，无需额外点击确认。按序号重排只处理分卷内部的乱序。
             </p>
           </>
         )}
@@ -94,12 +97,14 @@ export function PreviewBrowser({
 }
 
 function anomalyOrders(a: NumberAnomaly): number[] {
+  if (a.kind === "sectionReset") return [a.order];
   if (a.kind === "missing") return [a.after];
   if (a.kind === "duplicate") return a.orders;
   return [a.order];
 }
 
 function AnomalyText({ anomaly: a, jump }: { anomaly: NumberAnomaly; jump: (order: number) => ReactNode }) {
+  if (a.kind === "sectionReset") return <>分卷边界候选：{jump(a.order)}（序号从第 {a.previous} 章重置为第 1 章）</>;
   if (a.kind === "missing") {
     const range = a.from === a.to ? `${a.from}` : `${a.from}–${a.to}`;
     return (
