@@ -1,6 +1,6 @@
 import { DEFAULT_PROCESS_OPTIONS } from "@novarium/core/validate";
 import { beforeEach, describe, expect, it } from "vitest";
-import { originalKey, versionTextKey } from "./storage/keys";
+import { originalKey, replacementOriginalKey, versionTextKey } from "./storage/keys";
 import { createTestApp, ownerCookieHeader } from "./test-app";
 
 // 重新整理：上传新版本正文，提交章节索引，切换当前版本，删除旧版本。
@@ -129,5 +129,55 @@ describe("重新整理", () => {
     expect(switched).toBe(true);
     expect(res.status).toBe(200);
     expect(((await res.json()) as { title: string }).title).toBe("卷一 全");
+  });
+
+  it("按书名与作者找出重复的书", async () => {
+    const find = async (q: string) =>
+      ((await (await app.fetchApi(`/api/admin/books/duplicates?${q}`, { headers: { cookie } })).json()) as { books: { id: string }[] }).books;
+    expect((await find("title=%20测试%20&author=")).map((b) => b.id)).toEqual([bookId]);
+    expect(await find("title=测试&author=某人")).toEqual([]);
+    expect(await find("title=测&author=")).toEqual([]);
+    expect((await app.fetchApi("/api/admin/books/duplicates?title=测试")).status).toBe(401);
+  });
+
+  it("作为新版本导入：替换原稿并切换版本，旧原稿与旧正文被删除", async () => {
+    const uploadId = crypto.randomUUID();
+    const newOriginal = encoder.encode("卷一 全\n正文一。正文二。\n");
+    expect((await put(`/api/admin/books/${bookId}/originals/${uploadId}`, newOriginal)).status).toBe(201);
+    const v = await uploadVersion(newChapters);
+    const res = await post(`/api/admin/books/${bookId}/versions`, {
+      versionId: v.versionId,
+      options: newOptions,
+      chapters: v.chapters,
+      original: { uploadId, name: "测试（修订）.txt" },
+    });
+    expect(res.status).toBe(201);
+
+    const book = (await (await app.fetchApi(`/api/admin/books/${bookId}`, { headers: { cookie } })).json()) as {
+      book: { originalName: string; originalSize: number };
+    };
+    expect(book.book).toMatchObject({ originalName: "测试（修订）.txt", originalSize: newOriginal.byteLength });
+    const downloaded = await app.fetchApi(`/api/admin/books/${bookId}/original`, { headers: { cookie } });
+    expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(newOriginal);
+
+    const { storage, db } = app.deps;
+    expect(await storage.exists(originalKey(bookId))).toBe(false);
+    expect(await storage.exists(versionTextKey(bookId, oldVersionId))).toBe(false);
+    expect(await storage.exists(replacementOriginalKey(bookId, uploadId))).toBe(true);
+    expect((await db.all<{ n: number }>("select count(*) as n from pending_uploads"))[0]!.n).toBe(0);
+  });
+
+  it("新原稿缺失时不切换，也不替换原稿", async () => {
+    const v = await uploadVersion(newChapters);
+    const res = await post(`/api/admin/books/${bookId}/versions`, {
+      versionId: v.versionId,
+      options: newOptions,
+      chapters: v.chapters,
+      original: { uploadId: crypto.randomUUID(), name: "x.txt" },
+    });
+    expect(res.status).toBe(400);
+    expect((await detail()).version.id).toBe(oldVersionId);
+    expect(await app.deps.storage.exists(originalKey(bookId))).toBe(true);
+    expect((await put(`/api/admin/books/${crypto.randomUUID()}/originals/${crypto.randomUUID()}`, encoder.encode("x"))).status).toBe(404);
   });
 });

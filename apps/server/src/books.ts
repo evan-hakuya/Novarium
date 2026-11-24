@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { parseProcessOptions, validateChapterIndex } from "@novarium/core/validate";
 import type { AppDeps } from "./app";
 import { books, chapters, pendingUploads, versions } from "./db/schema";
-import { isUuid, originalKey, versionTextKey } from "./storage/keys";
+import { currentOriginalKey, isUuid, originalKey, replacementOriginalKey, versionTextKey } from "./storage/keys";
 
 /** 单个上传文件（原稿或版本正文）的上限。 */
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -24,6 +24,37 @@ export function createBookRoutes() {
     const { db } = c.get("deps");
     if (await bookExists(db, bookId)) return c.json({ error: "book_exists" }, 409);
     return storeUpload(c, originalKey(bookId));
+  });
+
+  // 以新版本替换已有书的原稿时，先上传新原稿；提交新版本时才替换。
+  app.put("/books/:bookId/originals/:uploadId", async (c) => {
+    const { bookId, uploadId } = c.req.param();
+    if (!isUuid(bookId) || !isUuid(uploadId)) return c.json({ error: "invalid_id" }, 400);
+    if (!(await bookExists(c.get("deps").db, bookId))) return c.json({ error: "not_found" }, 404);
+    return storeUpload(c, replacementOriginalKey(bookId, uploadId));
+  });
+
+  // 导入前检查书库中是否已有同名同作者的书（去掉首尾空白后完全相同）。
+  app.get("/books/duplicates", async (c) => {
+    const { db } = c.get("deps");
+    const title = (c.req.query("title") ?? "").trim();
+    const author = (c.req.query("author") ?? "").trim();
+    if (!title) return c.json({ books: [] });
+    const rows = await db
+      .select({
+        id: books.id,
+        title: books.title,
+        author: books.author,
+        originalName: books.originalName,
+        chapterCount: versions.chapterCount,
+        createdAt: books.createdAt,
+        updatedAt: books.updatedAt,
+      })
+      .from(books)
+      .innerJoin(versions, eq(versions.id, books.currentVersionId))
+      .where(and(eq(books.title, title), eq(books.author, author)))
+      .orderBy(desc(books.createdAt));
+    return c.json({ books: rows });
   });
 
   app.put("/books/:bookId/versions/:versionId/text", async (c) => {
@@ -127,28 +158,48 @@ export function createBookRoutes() {
   app.get("/books/:bookId/original", async (c) => {
     const bookId = c.req.param("bookId");
     const { db, storage } = c.get("deps");
-    const book = await db.select({ name: books.originalName }).from(books).where(eq(books.id, bookId)).get();
+    const book = await db.select({ id: books.id, originalKey: books.originalKey }).from(books).where(eq(books.id, bookId)).get();
     if (!book) return c.json({ error: "not_found" }, 404);
-    const stream = await storage.get(originalKey(bookId));
+    const stream = await storage.get(currentOriginalKey(book));
     if (!stream) return c.json({ error: "original_missing" }, 500);
     return new Response(stream, { headers: { "content-type": "application/octet-stream" } });
   });
 
   // 重新整理：浏览器先 PUT 新版本正文，再提交章节索引。
   // 新版本的记录、章节索引与当前版本的切换在一个批次中原子完成；旧版本的记录同批删除。
-  // 旧版本正文文件随后删除，并先登记为待清理文件，删除失败时由定时清理补上。
+  // 提交时可以带上新原稿（original.uploadId），在同一批次中替换原稿，用于把重复导入的原稿作为新版本。
+  // 被替换的旧文件随后删除，并先登记为待清理文件，删除失败时由定时清理补上。
   app.post("/books/:bookId/versions", async (c) => {
     const { db, storage, batch } = c.get("deps");
     const bookId = c.req.param("bookId");
-    const body = (await c.req.json().catch(() => null)) as { versionId?: unknown; options?: unknown; chapters?: unknown } | null;
+    const body = (await c.req.json().catch(() => null)) as {
+      versionId?: unknown;
+      options?: unknown;
+      chapters?: unknown;
+      original?: { uploadId?: unknown; name?: unknown };
+    } | null;
     const versionId = body?.versionId;
     if (typeof versionId !== "string" || !isUuid(versionId)) return c.json({ error: "invalid_id" }, 400);
     const parsedOptions = parseProcessOptions(body?.options);
     if (!parsedOptions.ok) return c.json({ error: "invalid_options", details: [parsedOptions.error] }, 400);
-    const book = await db.select({ currentVersionId: books.currentVersionId }).from(books).where(eq(books.id, bookId)).get();
+    const book = await db
+      .select({ id: books.id, currentVersionId: books.currentVersionId, originalKey: books.originalKey })
+      .from(books)
+      .where(eq(books.id, bookId))
+      .get();
     if (!book) return c.json({ error: "not_found" }, 404);
     if (await db.select({ id: versions.id }).from(versions).where(eq(versions.id, versionId)).get()) {
       return c.json({ error: "version_exists" }, 409);
+    }
+    let newOriginal: { key: string; name: string; size: number } | null = null;
+    if (body?.original !== undefined) {
+      const { uploadId, name } = body.original ?? {};
+      if (typeof uploadId !== "string" || !isUuid(uploadId)) return c.json({ error: "invalid_id" }, 400);
+      if (typeof name !== "string" || name.length > 255) return c.json({ error: "invalid_original_name" }, 400);
+      const key = replacementOriginalKey(bookId, uploadId);
+      const size = await storage.size(key);
+      if (size === null) return c.json({ error: "original_missing" }, 400);
+      newOriginal = { key, name, size };
     }
     const newKey = versionTextKey(bookId, versionId);
     const textSize = await storage.size(newKey);
@@ -158,7 +209,8 @@ export function createBookRoutes() {
     const index = body!.chapters as IndexEntry[];
 
     const oldVersionId = book.currentVersionId;
-    const oldKey = versionTextKey(bookId, oldVersionId);
+    const staleKeys = [versionTextKey(bookId, oldVersionId)];
+    if (newOriginal) staleKeys.push(currentOriginalKey(book));
     const now = new Date();
     await batch([
       db.insert(versions).values({
@@ -170,21 +222,30 @@ export function createBookRoutes() {
         createdAt: now,
       }),
       insertChapters(db, versionId, index),
-      db.update(books).set({ currentVersionId: versionId, updatedAt: now }).where(eq(books.id, bookId)),
+      db
+        .update(books)
+        .set({
+          currentVersionId: versionId,
+          updatedAt: now,
+          ...(newOriginal && { originalKey: newOriginal.key, originalName: newOriginal.name, originalSize: newOriginal.size }),
+        })
+        .where(eq(books.id, bookId)),
       db.delete(chapters).where(eq(chapters.versionId, oldVersionId)),
       db.delete(versions).where(eq(versions.id, oldVersionId)),
-      db.delete(pendingUploads).where(eq(pendingUploads.key, newKey)),
+      db.delete(pendingUploads).where(inArray(pendingUploads.key, newOriginal ? [newKey, newOriginal.key] : [newKey])),
       // 立即视为过期，下次定时清理就会处理。
       db
         .insert(pendingUploads)
-        .values({ key: oldKey, createdAt: new Date(0) })
+        .values(staleKeys.map((key) => ({ key, createdAt: new Date(0) })))
         .onConflictDoUpdate({ target: pendingUploads.key, set: { createdAt: new Date(0) } }),
     ]);
-    try {
-      await storage.delete(oldKey);
-      await db.delete(pendingUploads).where(eq(pendingUploads.key, oldKey));
-    } catch (error) {
-      console.error(JSON.stringify({ message: "old version text delete failed", key: oldKey, error: String(error) }));
+    for (const key of staleKeys) {
+      try {
+        await storage.delete(key);
+        await db.delete(pendingUploads).where(eq(pendingUploads.key, key));
+      } catch (error) {
+        console.error(JSON.stringify({ message: "stale file delete failed", key, error: String(error) }));
+      }
     }
     return c.json({ versionId }, 201);
   });

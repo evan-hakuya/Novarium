@@ -10,7 +10,7 @@ import { countPending, reviewNumbers } from "@/lib/number-review";
 import { useProcessPreview } from "@/lib/use-process-preview";
 
 const route = getRouteApi("/owner/books/$bookId/reprocess");
-const stepText = { text: "上传新版本正文", index: "保存章节索引并切换版本" } as const;
+const stepText = { original: "上传原稿", text: "上传新版本正文", index: "保存章节索引并切换版本" } as const;
 
 // 重新整理：从原稿按新的整理选项生成新版本，保存后切换为当前版本。
 export function ReprocessPage() {
