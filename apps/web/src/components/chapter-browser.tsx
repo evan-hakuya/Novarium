@@ -30,10 +30,16 @@ export function ChapterBrowser({
   const select = onSelect ?? setOwn;
   const current = chapters[selected];
   const listRef = useRef<HTMLOListElement>(null);
+  const articleRef = useRef<HTMLElement>(null);
 
   // 由外部跳转到某一章时，把它滚动到列表可见范围内。
   useEffect(() => {
     listRef.current?.querySelector(`[data-order="${selected}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
+
+  // 换章后正文从头开始显示。
+  useEffect(() => {
+    articleRef.current?.scrollTo({ top: 0 });
   }, [selected]);
 
   return (
@@ -60,7 +66,7 @@ export function ChapterBrowser({
           </li>
         ))}
       </ol>
-      <article className="overflow-y-auto p-6">
+      <article ref={articleRef} data-chapter-scroll className="overflow-y-auto px-6 pt-6">
         {current && (
           <>
             <h2 className="mb-4 font-heading text-lg font-semibold">{current.title}</h2>
@@ -93,32 +99,35 @@ export function ChapterText({ text }: { text: string }) {
 
   useEffect(() => setPage(0), [text]);
 
-  if (!text) return <div className="text-muted-foreground">（本章没有正文）</div>;
+  if (!text) return <div className="pb-6 text-muted-foreground">（本章没有正文）</div>;
   const current = Math.min(page, starts.length - 1);
   const body = text.slice(starts[current], starts[current + 1] ?? text.length);
+  const pages = starts.length;
   const go = (p: number) => {
     setPage(p);
-    topRef.current?.scrollIntoView({ block: "start" });
+    topRef.current?.closest("[data-chapter-scroll]")?.scrollTo({ top: 0 });
   };
-  const pager = starts.length > 1 && (
-    <div className="flex items-center justify-between gap-2 py-2 text-sm text-muted-foreground">
-      <Button size="sm" variant="outline" disabled={current === 0} onClick={() => go(current - 1)}>
-        上一页
-      </Button>
-      <span>
-        第 {current + 1} / {starts.length} 页 · 本章共 {text.length.toLocaleString()} 字
-      </span>
-      <Button size="sm" variant="outline" disabled={current === starts.length - 1} onClick={() => go(current + 1)}>
-        下一页
-      </Button>
-    </div>
-  );
 
   return (
     <div ref={topRef}>
-      {pager}
-      <div className="whitespace-pre-wrap leading-8">{body}</div>
-      {pager}
+      <div className="whitespace-pre-wrap pb-6 leading-8">{body}</div>
+      {/* 固定在正文区域底部的工具栏，滚动到任何位置都能翻页。 */}
+      <div className="sticky bottom-0 -mx-6 flex items-center justify-between gap-2 border-t bg-background/95 px-6 py-2 text-sm text-muted-foreground backdrop-blur">
+        <span>本章 {text.length.toLocaleString()} 字</span>
+        {pages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" disabled={current === 0} onClick={() => go(current - 1)}>
+              上一页
+            </Button>
+            <span>
+              第 {current + 1} / {pages} 页
+            </span>
+            <Button size="sm" variant="outline" disabled={current === pages - 1} onClick={() => go(current + 1)}>
+              下一页
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
