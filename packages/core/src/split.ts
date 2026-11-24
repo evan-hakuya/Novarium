@@ -1,13 +1,18 @@
 import { extractChapterOrder } from "./vendor/novel-processor/novel";
-import { detectChapterUnit, isChapterTitleLine } from "./vendor/novel-processor/regex";
+import { CHAPTER_TITLE_MAX_LEN, detectChapterUnit, isChapterTitleLine } from "./vendor/novel-processor/regex";
 import { applyNumberFixes } from "./numbering";
 import type { ChapterDraft } from "./types";
 
 export type { ChapterDraft };
 
+/** 本书章节正则与内置规则的关系：extend 两者任一命中即为标题；replace 只用本书正则。 */
+export type ChapterPatternMode = "extend" | "replace";
+
 export interface SplitOptions {
-  /** 自定义章节标题正则；为 null 时使用内置规则。 */
+  /** 本书的章节标题正则；为 null 时只用内置规则。 */
   chapterPattern: string | null;
+  /** 缺省为 extend。 */
+  chapterPatternMode?: ChapterPatternMode;
 }
 
 /** 第一个章节标题之前有正文时，这段正文作为一个章节，使用此标题。 */
@@ -60,7 +65,7 @@ export function splitChapters(text: string, options: SplitOptions): ChapterDraft
   };
 
   const chapters: ChapterDraft[] = [];
-  for (const segment of chapterSegments(lines, options.chapterPattern)) {
+  for (const segment of chapterSegments(lines, options)) {
     // 有标题的章节，正文从标题的下一行开始。
     const bodyFrom = segment.titleLine === null ? segment.from : segment.titleLine + 1;
     chapters.push({ order: chapters.length, title: segment.title, number: segment.number, ...bodyRange(bodyFrom, segment.to) });
@@ -79,8 +84,8 @@ interface Segment {
 }
 
 /** 按章节标题把正文的行分段，每段对应一个章节。 */
-function chapterSegments(lines: string[], pattern: string | null): Segment[] {
-  const isTitle = titleMatcher(lines, pattern);
+function chapterSegments(lines: string[], options: SplitOptions): Segment[] {
+  const isTitle = titleMatcher(lines, options);
   const titleLines: number[] = [];
   lines.forEach((line, i) => {
     if (isTitle(line)) titleLines.push(i);
@@ -105,7 +110,7 @@ function chapterSegments(lines: string[], pattern: string | null): Segment[] {
 /** 按所有者选择的修复调整正文中各章节的位置（规则见 applyNumberFixes），返回调整后的正文。 */
 export function applyNumberFixesToText(text: string, options: SplitOptions, fixes: readonly string[]): string {
   const lines = text.split("\n");
-  const segments = chapterSegments(lines, options.chapterPattern);
+  const segments = chapterSegments(lines, options);
   const order = applyNumberFixes(
     segments.map((s, i) => ({ order: i, title: s.title, number: s.number })),
     fixes,
@@ -113,16 +118,27 @@ export function applyNumberFixesToText(text: string, options: SplitOptions, fixe
   return order.map((i) => lines.slice(segments[i]!.from, segments[i]!.to).join("\n")).join("\n");
 }
 
-function titleMatcher(lines: string[], pattern: string | null): (line: string) => boolean {
-  if (pattern) {
-    const error = checkChapterPattern(pattern);
-    if (error) throw new Error(`invalid chapter pattern: ${error}`);
-    const re = new RegExp(pattern);
-    return (line) => {
-      const t = line.trim();
-      return t.length > 0 && re.test(t);
-    };
-  }
+/**
+ * 判断一行是不是章节标题。内置规则不是单个正则：它组合多条正则、标题长度上限、句末标点判断，
+ * 以及按全文统计出的章节单位（章/回/节…），因此无法作为正则交给所有者编辑。
+ * 本书正则命中的行同样受标题长度上限约束，避免把正文中提到同一词语的长句当作标题。
+ */
+function titleMatcher(lines: string[], options: SplitOptions): (line: string) => boolean {
   const unit = detectChapterUnit(lines);
-  return (line) => isChapterTitleLine(line, unit);
+  const builtin = (line: string) => isChapterTitleLine(line, unit);
+  const custom = customTitleMatcher(options.chapterPattern);
+  if (!custom) return builtin;
+  return options.chapterPatternMode === "replace" ? custom : (line) => builtin(line) || custom(line);
+}
+
+/** 本书章节正则的匹配函数；没有本书正则时返回 null。只匹配不超过标题长度上限的行。 */
+export function customTitleMatcher(pattern: string | null): ((line: string) => boolean) | null {
+  if (!pattern) return null;
+  const error = checkChapterPattern(pattern);
+  if (error) throw new Error(`invalid chapter pattern: ${error}`);
+  const re = new RegExp(pattern);
+  return (line) => {
+    const t = line.trim();
+    return t.length > 0 && [...t].length <= CHAPTER_TITLE_MAX_LEN && re.test(t);
+  };
 }

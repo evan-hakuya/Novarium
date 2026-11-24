@@ -56,7 +56,13 @@ function OptionsSummary({ options }: { options: Partial<ProcessOptions> }) {
   const steps = STEPS.filter((s) => options[s.key]).map((s) => s.label);
   const parts = [
     `清洗：${steps.join("、") || "无"}`,
-    `章节正则：${options.chapterPattern ?? "内置规则"}`,
+    `章节正则：${
+      !options.chapterPattern
+        ? "内置规则"
+        : options.chapterPatternMode === "extend"
+          ? `内置规则 + ${options.chapterPattern}`
+          : options.chapterPattern
+    }`,
     ...(options.numberFixes?.length ? [`修复序号异常 ${options.numberFixes.length} 处`] : []),
     ...(options.numberIgnores?.length ? [`忽略序号异常 ${options.numberIgnores.length} 处`] : []),
     `过滤词 ${options.filterWords?.length ?? 0} 个（阈值 ${options.filterMaxLineLength || "不限"}）`,

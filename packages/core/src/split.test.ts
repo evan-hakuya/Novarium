@@ -107,11 +107,23 @@ describe("splitChapters", () => {
     expect(empty!.byteLength).toBe(0);
   });
 
-  it("uses a custom pattern instead of the built-in rules", () => {
+  it("uses only the custom pattern in replace mode", () => {
     const text = "【卷一】\n内容一\n第一章 不算标题\n【卷二】\n内容二";
-    const chapters = splitChapters(text, { chapterPattern: "^【卷.+】$" });
+    const chapters = splitChapters(text, { chapterPattern: "^【卷.+】$", chapterPatternMode: "replace" });
     expect(chapters.map((c) => c.title)).toEqual(["【卷一】", "【卷二】"]);
     expect(readChapter(text, chapters[0]!)).toBe("内容一\n第一章 不算标题");
+  });
+
+  it("adds the custom pattern to the built-in rules by default, for short lines only", () => {
+    const text = [
+      "第一章 开始",
+      "正文。",
+      "后记：这里提到个人番外的一段很长很长很长很长很长很长很长很长很长很长很长很长的正文说明。",
+      "个人番外篇 : 甲",
+      "番外正文。",
+    ].join("\n");
+    const chapters = splitChapters(text, { chapterPattern: "个人番外" });
+    expect(chapters.map((c) => c.title)).toEqual(["第一章 开始", "个人番外篇 : 甲"]);
   });
 
   it("reports invalid custom patterns", () => {

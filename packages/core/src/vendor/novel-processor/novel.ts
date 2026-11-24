@@ -399,6 +399,8 @@ export interface NovelFormatOptions {
   removeDuplicateLines: boolean;
   enableIndent: boolean;
   specialStart: string;
+  /** Novarium 本地补充：本书章节正则命中的行，与内置标题一样独立成段，不与前后行合并。 */
+  isExtraTitleLine?: (line: string) => boolean;
 }
 
 // 小说文本处理主管线（繁简转换在调用方完成后传入）：规范化 → 清杂质 → 半角 → 章节标记/分割/筛选/行尾数字 → 智能分段 → 行级去冗余 → 智能排版/压缩换行。
@@ -479,7 +481,8 @@ export const formatNovelText = async (text: string, opts: NovelFormatOptions): P
       }
 
       const previousLine = i > 0 ? processedLines[i - 1].trim() : "";
-      const isChapterOrNumber = isTitleLine(currentLine, chapterUnit) || pureNumberRegex.test(currentLine);
+      const isChapterOrNumber =
+        isTitleLine(currentLine, chapterUnit) || pureNumberRegex.test(currentLine) || !!opts.isExtraTitleLine?.(currentLine);
       const isSpecialStart = novelSectionHeaderRegex.test(currentLine) || specialStartRegex?.test(currentLine.trim()) || (opts.specialStart && previousLine.startsWith(opts.specialStart));
       const startsWithSpecialChar = specialLineStartRegex.test(currentLine) || numberStartRegex.test(currentLine);
       const prevEndsWithPunctuation = punctuationEndRegex.test(previousLine) || numberEndRegex.test(previousLine) || isSeparatorBar(previousLine);

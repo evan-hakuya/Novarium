@@ -22,8 +22,10 @@ export interface ProcessOptions {
   filterWords: string[];
   /** 长度超过此值的行不受过滤词表影响，用于保护正文；0 表示不豁免。 */
   filterMaxLineLength: number;
-  /** 本书的章节标题正则；为 null 时使用内置规则。 */
+  /** 本书的章节标题正则；为 null 时只用内置规则。只按书设置。 */
   chapterPattern: string | null;
+  /** extend：本书正则补充内置规则；replace：只用本书正则。只按书设置。 */
+  chapterPatternMode: "extend" | "replace";
   /** 所有者选择修复的章节序号异常（异常的 key）。只按书设置；系统不自动修复。 */
   numberFixes: string[];
   /** 所有者选择忽略的章节序号异常（异常的 key）。只按书设置。 */
@@ -43,6 +45,7 @@ export const DEFAULT_PROCESS_OPTIONS: Readonly<ProcessOptions> = Object.freeze({
   filterWords: [],
   filterMaxLineLength: 0,
   chapterPattern: null,
+  chapterPatternMode: "extend",
   numberFixes: [],
   numberIgnores: [],
 });
@@ -105,6 +108,9 @@ export function parseProcessOptions(
       return { ok: false, error: "chapterPattern is not a valid regular expression" };
     }
   }
+  // 早期保存的整理选项没有这一项；那时本书正则会替换内置规则。
+  const mode = v.chapterPatternMode ?? "replace";
+  if (mode !== "extend" && mode !== "replace") return { ok: false, error: "chapterPatternMode must be extend or replace" };
   // 早期保存的整理选项没有这两项，视为没有处理过异常。
   const reviews: Record<"numberFixes" | "numberIgnores", string[]> = { numberFixes: [], numberIgnores: [] };
   for (const key of ["numberFixes", "numberIgnores"] as const) {
@@ -128,6 +134,7 @@ export function parseProcessOptions(
       filterWords,
       filterMaxLineLength: max,
       chapterPattern: pattern,
+      chapterPatternMode: mode,
       ...reviews,
     },
   };
