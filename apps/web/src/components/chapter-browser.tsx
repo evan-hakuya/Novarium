@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export interface ChapterItem {
@@ -7,31 +7,53 @@ export interface ChapterItem {
   byteLength: number;
 }
 
-/** 左侧章节列表、右侧章节正文。正文由调用方按章节渲染。 */
+/**
+ * 左侧章节列表、右侧章节正文。正文由调用方按章节渲染。
+ * 传入 selected 与 onSelect 时由调用方控制当前章节；flagged 中的章节在列表中标出。
+ */
 export function ChapterBrowser({
   chapters,
   renderContent,
+  selected: controlled,
+  onSelect,
+  flagged,
 }: {
   chapters: ChapterItem[];
   renderContent: (chapter: ChapterItem) => ReactNode;
+  selected?: number;
+  onSelect?: (order: number) => void;
+  flagged?: ReadonlySet<number>;
 }) {
-  const [selected, setSelected] = useState(0);
+  const [own, setOwn] = useState(0);
+  const selected = controlled ?? own;
+  const select = onSelect ?? setOwn;
   const current = chapters[selected];
+  const listRef = useRef<HTMLOListElement>(null);
+
+  // 由外部跳转到某一章时，把它滚动到列表可见范围内。
+  useEffect(() => {
+    listRef.current?.querySelector(`[data-order="${selected}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
 
   return (
     <div className="grid h-[70svh] grid-cols-[minmax(10rem,16rem)_1fr] overflow-hidden rounded-xl border">
-      <ol className="overflow-y-auto border-r py-2 text-sm">
+      <ol ref={listRef} className="overflow-y-auto border-r py-2 text-sm">
         {chapters.map((c) => (
           <li key={c.order}>
             <button
               type="button"
-              onClick={() => setSelected(c.order)}
+              data-order={c.order}
+              onClick={() => select(c.order)}
               className={cn(
                 "flex w-full items-baseline justify-between gap-2 px-3 py-1.5 text-left hover:bg-muted",
                 c.order === selected && "bg-muted font-medium",
+                flagged?.has(c.order) && "text-amber-700 dark:text-amber-400",
               )}
             >
-              <span className="truncate">{c.title}</span>
+              <span className="truncate">
+                {flagged?.has(c.order) && <span aria-label="序号异常">⚠ </span>}
+                {c.title}
+              </span>
               {c.byteLength === 0 && <span className="shrink-0 text-xs text-muted-foreground">空</span>}
             </button>
           </li>

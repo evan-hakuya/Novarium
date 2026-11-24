@@ -1,5 +1,6 @@
 import { extractChapterOrder } from "./vendor/novel-processor/novel";
 import { detectChapterUnit, isChapterTitleLine } from "./vendor/novel-processor/regex";
+import { orderByNumber } from "./numbering";
 import type { ChapterDraft } from "./types";
 
 export type { ChapterDraft };
@@ -33,8 +34,6 @@ export function checkChapterPattern(pattern: string): string | null {
  */
 export function splitChapters(text: string, options: SplitOptions): ChapterDraft[] {
   const lines = text.split("\n");
-  const isTitle = titleMatcher(lines, options.chapterPattern);
-
   const lineStart: number[] = [];
   const lineBytes: number[] = [];
   let pos = 0;
@@ -45,11 +44,6 @@ export function splitChapters(text: string, options: SplitOptions): ChapterDraft
     pos += len + 1;
   }
   const totalBytes = Math.max(0, pos - 1);
-
-  const titleLines: number[] = [];
-  lines.forEach((line, i) => {
-    if (isTitle(line)) titleLines.push(i);
-  });
 
   // 章节正文的字节范围：去掉首尾空行。
   const bodyRange = (from: number, to: number) => {
@@ -66,25 +60,54 @@ export function splitChapters(text: string, options: SplitOptions): ChapterDraft
   };
 
   const chapters: ChapterDraft[] = [];
-  const push = (title: string, number: number | null, from: number, to: number) => {
-    chapters.push({ order: chapters.length, title, number, ...bodyRange(from, to) });
-  };
-
-  if (titleLines.length === 0) {
-    push(WHOLE_BOOK_TITLE, null, 0, lines.length);
-    return chapters;
+  for (const segment of chapterSegments(lines, options.chapterPattern)) {
+    // 有标题的章节，正文从标题的下一行开始。
+    const bodyFrom = segment.titleLine === null ? segment.from : segment.titleLine + 1;
+    chapters.push({ order: chapters.length, title: segment.title, number: segment.number, ...bodyRange(bodyFrom, segment.to) });
   }
+  return chapters;
+}
 
+interface Segment {
+  title: string;
+  number: number | null;
+  /** 标题所在行；前言与无标题的全文为 null。 */
+  titleLine: number | null;
+  /** 行范围 [from, to)，含标题行。所有段首尾相接，覆盖全部行。 */
+  from: number;
+  to: number;
+}
+
+/** 按章节标题把正文的行分段，每段对应一个章节。 */
+function chapterSegments(lines: string[], pattern: string | null): Segment[] {
+  const isTitle = titleMatcher(lines, pattern);
+  const titleLines: number[] = [];
+  lines.forEach((line, i) => {
+    if (isTitle(line)) titleLines.push(i);
+  });
+  if (titleLines.length === 0) {
+    return [{ title: WHOLE_BOOK_TITLE, number: null, titleLine: null, from: 0, to: lines.length }];
+  }
+  const segments: Segment[] = [];
   const firstTitle = titleLines[0]!;
   if (lines.slice(0, firstTitle).some((line) => line.trim())) {
-    push(PREFACE_TITLE, null, 0, firstTitle);
+    segments.push({ title: PREFACE_TITLE, number: null, titleLine: null, from: 0, to: firstTitle });
   }
   titleLines.forEach((lineIndex, k) => {
     const title = lines[lineIndex]!.trim();
-    const end = titleLines[k + 1] ?? lines.length;
-    push(title, extractChapterOrder(title), lineIndex + 1, end);
+    // 第一个标题前只有空行时，这些空行并入第一章。
+    const from = k === 0 && segments.length === 0 ? 0 : lineIndex;
+    segments.push({ title, number: extractChapterOrder(title), titleLine: lineIndex, from, to: titleLines[k + 1] ?? lines.length });
   });
-  return chapters;
+  return segments;
+}
+
+/** 按章节序号重排正文中各章节的位置（规则见 orderByNumber），返回重排后的正文。 */
+export function reorderTextByNumber(text: string, options: SplitOptions): string {
+  const lines = text.split("\n");
+  const segments = chapterSegments(lines, options.chapterPattern);
+  const order = orderByNumber(segments.map((s, i) => ({ order: i, number: s.number })));
+  return order.map((i) => lines.slice(segments[i]!.from, segments[i]!.to).join("\n")).join("\n");
 }
 
 function titleMatcher(lines: string[], pattern: string | null): (line: string) => boolean {
