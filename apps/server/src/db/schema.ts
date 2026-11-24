@@ -46,3 +46,13 @@ export const chapters = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.versionId, t.ord] })],
 );
+
+// 已上传但尚未被提交的书引用的文件。提交成功时删除记录；超时仍在的视为孤立文件，由定时清理删除。
+export const pendingUploads = sqliteTable(
+  "pending_uploads",
+  {
+    key: text("key").primaryKey(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("pending_uploads_created_at_idx").on(t.createdAt)],
+);

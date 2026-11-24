@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApi, type AppDeps } from "./app";
+import { cleanupStaleUploads, STALE_UPLOAD_MS } from "./cleanup";
 import * as schema from "./db/schema";
 import { createFsStorage } from "./storage/fs";
 
@@ -40,6 +41,14 @@ const deps: AppDeps = {
 if (!deps.ownerPassword) {
   console.warn(JSON.stringify({ message: "OWNER_PASSWORD is not set; owner login is disabled" }));
 }
+
+// 启动时清理一次，之后每小时清理一次导入失败留下的孤立文件。
+const runCleanup = () =>
+  cleanupStaleUploads(deps).catch((error) =>
+    console.error(JSON.stringify({ message: "stale upload cleanup failed", error: String(error) })),
+  );
+void runCleanup();
+setInterval(runCleanup, STALE_UPLOAD_MS).unref();
 
 const app = new Hono();
 app.route("/", createApi(() => deps));

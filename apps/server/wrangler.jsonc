@@ -30,5 +30,9 @@
     "traces": {
       "enabled": true
     }
+  },
+  // 每小时清理一次导入失败留下的孤立文件。
+  "triggers": {
+    "crons": ["17 * * * *"]
   }
 }
