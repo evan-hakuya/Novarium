@@ -1,60 +1,8 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createApi, type AppDeps } from "./app";
-import { createSessionValue, SESSION_COOKIE } from "./auth";
-import * as schema from "./db/schema";
-import { createFsStorage } from "./storage/fs";
-import { versionTextKey } from "./storage/keys";
+import { addBook, createTestApp, ORIGIN, ownerCookieHeader } from "./test-app";
 
 // 书源契约测试：按 Legado 的方式使用导出的书源 JSON——
 // 每个请求都带上 `header` 中的请求头，相对链接按当前请求地址补全，规则是 `$.x` / `$.x[*]` 形式的 JsonPath。
-
-const ORIGIN = "https://novarium.example";
-const PASSWORD = "test-password";
-const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));
-
-function createTestApp() {
-  const sqlite = new Database(":memory:");
-  const db = drizzle(sqlite, { schema });
-  migrate(db, { migrationsFolder });
-  const deps: AppDeps = {
-    runtime: "node",
-    db,
-    storage: createFsStorage(mkdtempSync(join(tmpdir(), "novarium-test-"))),
-    ownerPassword: PASSWORD,
-    batch: async (queries) => {
-      sqlite.transaction(() => {
-        for (const query of queries) (query as unknown as { run(): unknown }).run();
-      })();
-    },
-  };
-  const api = createApi(() => deps);
-  const fetchApi = async (path: string, init?: RequestInit) => api.request(new URL(path, ORIGIN).toString(), init);
-  return { deps, fetchApi };
-}
-
-async function addBook(deps: AppDeps, id: string, title: string, author: string, chapterTexts: [string, string][]) {
-  const versionId = crypto.randomUUID();
-  const encoder = new TextEncoder();
-  let offset = 0;
-  const index = chapterTexts.map(([chapterTitle, body], order) => {
-    const byteLength = encoder.encode(body).length;
-    const entry = { versionId, ord: order, title: chapterTitle, number: order + 1, byteOffset: offset, byteLength };
-    offset += byteLength;
-    return entry;
-  });
-  await deps.storage.put(versionTextKey(id, versionId), encoder.encode(chapterTexts.map(([, body]) => body).join("")));
-  const now = new Date();
-  await deps.db.insert(schema.versions).values({ id: versionId, bookId: id, options: {}, textSize: offset, chapterCount: index.length, createdAt: now });
-  await deps.db.insert(schema.chapters).values(index);
-  await deps.db.insert(schema.books).values({ id, title, author, originalName: `${title}.txt`, originalSize: offset, currentVersionId: versionId, createdAt: now, updatedAt: now });
-}
 
 type BookSource = {
   bookSourceUrl: string;
@@ -134,7 +82,7 @@ describe("书源", () => {
 
   beforeEach(async () => {
     app = createTestApp();
-    ownerCookie = `${SESSION_COOKIE}=${await createSessionValue(PASSWORD)}`;
+    ownerCookie = await ownerCookieHeader();
     await addBook(app.deps, "11111111-1111-4111-8111-111111111111", "归藏试读", "无名氏", [
       ["第一章 开端", "第一章 开端\n正文一。\n"],
       ["第二章 归来", "第二章 归来\n正文二，含中文与 emoji 🌙。\n"],

@@ -14,7 +14,7 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 
 ### Book source debugging
 
-Debug Legado book sources against the local reader container, not a phone. See `docs/agents/book-source-debugging.md`.
+Debug and accept Legado book sources against the local reader container. Verify on a phone only when the owner asks. See `docs/agents/book-source-debugging.md`.
 
 ## Pull requests
 

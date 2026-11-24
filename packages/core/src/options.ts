@@ -40,3 +40,65 @@ export const DEFAULT_PROCESS_OPTIONS: Readonly<ProcessOptions> = Object.freeze({
   filterMaxLineLength: 0,
   chapterPattern: null,
 });
+
+/** 过滤词表的上限，防止异常输入。 */
+export const MAX_FILTER_WORDS = 1000;
+export const MAX_FILTER_WORD_LENGTH = 100;
+export const MAX_CHAPTER_PATTERN_LENGTH = 500;
+
+const BOOLEAN_KEYS = [
+  "smartLineBreak",
+  "indent",
+  "trimLines",
+  "splitInlineChapterTitles",
+  "mergeDuplicateChapterTitles",
+  "removeDuplicateLines",
+  "paragraphSplit",
+  "removeLineEndNumbers",
+] as const satisfies readonly (keyof ProcessOptions)[];
+
+/**
+ * 校验来自客户端或数据库的整理选项。服务端不得信任客户端。
+ * 过滤词会去掉首尾空白、去重并丢弃空词。
+ */
+export function parseProcessOptions(
+  value: unknown,
+): { ok: true; options: ProcessOptions } | { ok: false; error: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: "options must be an object" };
+  const v = value as Record<string, unknown>;
+  for (const key of BOOLEAN_KEYS) {
+    if (typeof v[key] !== "boolean") return { ok: false, error: `${key} must be a boolean` };
+  }
+  if (typeof v.specialStart !== "string" || v.specialStart.length > 100) {
+    return { ok: false, error: "specialStart must be a string of at most 100 characters" };
+  }
+  if (!Array.isArray(v.filterWords) || !v.filterWords.every((w) => typeof w === "string")) {
+    return { ok: false, error: "filterWords must be an array of strings" };
+  }
+  const filterWords = [...new Set((v.filterWords as string[]).map((w) => w.trim()).filter(Boolean))];
+  if (filterWords.length > MAX_FILTER_WORDS) return { ok: false, error: `at most ${MAX_FILTER_WORDS} filter words` };
+  if (filterWords.some((w) => w.length > MAX_FILTER_WORD_LENGTH)) {
+    return { ok: false, error: `each filter word must be at most ${MAX_FILTER_WORD_LENGTH} characters` };
+  }
+  const max = v.filterMaxLineLength;
+  if (typeof max !== "number" || !Number.isSafeInteger(max) || max < 0 || max > 100_000) {
+    return { ok: false, error: "filterMaxLineLength must be an integer between 0 and 100000" };
+  }
+  const pattern = v.chapterPattern;
+  if (pattern !== null && (typeof pattern !== "string" || !pattern || pattern.length > MAX_CHAPTER_PATTERN_LENGTH)) {
+    return { ok: false, error: `chapterPattern must be null or a non-empty string of at most ${MAX_CHAPTER_PATTERN_LENGTH} characters` };
+  }
+  if (typeof pattern === "string") {
+    try {
+      new RegExp(pattern);
+    } catch {
+      return { ok: false, error: "chapterPattern is not a valid regular expression" };
+    }
+  }
+  const options = { ...DEFAULT_PROCESS_OPTIONS } as ProcessOptions;
+  for (const key of BOOLEAN_KEYS) options[key] = v[key] as boolean;
+  return {
+    ok: true,
+    options: { ...options, specialStart: v.specialStart, filterWords, filterMaxLineLength: max, chapterPattern: pattern },
+  };
+}
