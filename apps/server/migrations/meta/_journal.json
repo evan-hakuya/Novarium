@@ -15,6 +15,13 @@
       "when": 1795496036767,
       "tag": "0001_books",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795496754690,
+      "tag": "0002_pending_uploads",
+      "breakpoints": true
     }
   ]
 }

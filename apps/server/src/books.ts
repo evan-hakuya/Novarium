@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import type { BatchItem } from "drizzle-orm/batch";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { validateChapterIndex } from "@novarium/core/validate";
 import type { AppDeps } from "./app";
-import { books, chapters, versions } from "./db/schema";
+import { books, chapters, pendingUploads, versions } from "./db/schema";
 import { isUuid, originalKey, versionTextKey } from "./storage/keys";
 
 /** 单个上传文件（原稿或版本正文）的上限。 */
@@ -90,6 +90,7 @@ export function createBookRoutes() {
         createdAt: now,
         updatedAt: now,
       }),
+      db.delete(pendingUploads).where(inArray(pendingUploads.key, [originalKey(id), versionTextKey(id, versionId)])),
     ]);
     return c.json({ id }, 201);
   });
@@ -180,11 +181,17 @@ async function storeUpload(c: import("hono").Context<Env>, key: string) {
   if (length > MAX_UPLOAD_BYTES) return c.json({ error: "too_large", maxBytes: MAX_UPLOAD_BYTES }, 413);
   const body = c.req.raw.body;
   if (!body) return c.json({ error: "empty_body" }, 400);
-  const { storage } = c.get("deps");
+  const { db, storage } = c.get("deps");
+  // 先记录再写入：写入中断或之后没有提交时，定时清理能找到这个文件。
+  await db
+    .insert(pendingUploads)
+    .values({ key, createdAt: new Date() })
+    .onConflictDoUpdate({ target: pendingUploads.key, set: { createdAt: new Date() } });
   await storage.put(key, body);
   const size = await storage.size(key);
   if (size !== length) {
     await storage.delete(key);
+    await db.delete(pendingUploads).where(eq(pendingUploads.key, key));
     return c.json({ error: "incomplete_upload" }, 400);
   }
   return c.json({ size }, 201);
