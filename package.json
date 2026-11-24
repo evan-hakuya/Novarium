@@ -1,0 +1,23 @@
+{
+  "name": "novarium",
+  "private": true,
+  "description": "Novarium 归藏：自托管的私人书库",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.10.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @novarium/web --filter @novarium/server dev",
+    "build": "pnpm --filter @novarium/web build && pnpm --filter @novarium/server build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "deploy:cf": "pnpm --filter @novarium/web build && pnpm --filter @novarium/server run deploy:cf"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}

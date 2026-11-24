@@ -1,0 +1,15 @@
+{
+  "name": "@novarium/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Novarium 整理引擎：把原稿整理成版本。纯 TypeScript，不依赖平台。",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  }
+}
