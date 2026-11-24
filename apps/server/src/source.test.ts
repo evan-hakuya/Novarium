@@ -129,7 +129,7 @@ describe("书源", () => {
       body: JSON.stringify({ name }),
     });
     expect(res.status).toBe(201);
-    return (await res.json()) as { token: { id: string }; bookSource: BookSource };
+    return (await res.json()) as { token: { id: string }; bookSource: BookSource; importUrl: string };
   }
 
   beforeEach(async () => {
@@ -221,5 +221,53 @@ describe("书源", () => {
     expect((await app.fetchApi(`/api/source/books/${crypto.randomUUID()}`, { headers })).status).toBe(404);
     expect((await app.fetchApi(`/api/source/books/${id}/chapters/9`, { headers })).status).toBe(404);
     expect((await app.fetchApi(`/api/source/books/${id}/chapters/-1`, { headers })).status).toBe(404);
+  });
+
+  it("所有者可以再次查看书源；撤销后不能再查看", async () => {
+    const created = await createToken("我的手机");
+    const view = () => app.fetchApi(`/api/admin/tokens/${created.token.id}/book-source`, { headers: { cookie: ownerCookie } });
+    const res = await view();
+    expect(res.status).toBe(200);
+    const again = (await res.json()) as { bookSource: BookSource; importUrl: string };
+    expect(again.bookSource.header).toBe(created.bookSource.header);
+    expect(again.importUrl).toBe(created.importUrl);
+
+    await app.fetchApi(`/api/admin/tokens/${created.token.id}/revoke`, { method: "POST", headers: { cookie: ownerCookie } });
+    expect((await view()).status).toBe(409);
+  });
+
+  it("删除访问令牌记录后，令牌立即失效并从列表消失", async () => {
+    const { token, bookSource } = await createToken("我的手机");
+    const headers = JSON.parse(bookSource.header) as Record<string, string>;
+    const del = () => app.fetchApi(`/api/admin/tokens/${token.id}`, { method: "DELETE", headers: { cookie: ownerCookie } });
+    expect((await del()).status).toBe(200);
+    expect((await del()).status).toBe(404);
+    expect((await app.fetchApi("/api/source/search?q=x", { headers })).status).toBe(401);
+    const list = (await (await app.fetchApi("/api/admin/tokens", { headers: { cookie: ownerCookie } })).json()) as { tokens: unknown[] };
+    expect(list.tokens).toEqual([]);
+    expect((await app.fetchApi(`/api/admin/tokens/${token.id}`, { method: "DELETE" })).status).toBe(401);
+  });
+
+  it("网络导入：不带请求头下载书源，导入后可以读书", async () => {
+    const { token, importUrl } = await createToken("我的手机");
+    expect(importUrl).toMatch(new RegExp(`^${ORIGIN}/api/book-sources/nvr_`));
+
+    // 阅读客户端从另一个地址访问时，书源地址跟随导入请求。
+    const res = await app.fetchApi(importUrl.replace(ORIGIN, "http://host.docker.internal:8787"));
+    expect(res.status).toBe(200);
+    const imported = (await res.json()) as BookSource[];
+    expect(imported).toHaveLength(1);
+    expect(imported[0]!.bookSourceUrl).toBe("http://host.docker.internal:8787");
+
+    const client = legadoClient({ ...imported[0]!, bookSourceUrl: ORIGIN }, app.fetchApi);
+    const [book] = await client.search("无名氏");
+    expect(book!.name).toBe("归藏试读");
+
+    const proxied = await app.fetchApi(importUrl, { headers: { "x-forwarded-proto": "https", "x-forwarded-host": "books.example" } });
+    expect(((await proxied.json()) as BookSource[])[0]!.bookSourceUrl).toBe("https://books.example");
+
+    await app.fetchApi(`/api/admin/tokens/${token.id}/revoke`, { method: "POST", headers: { cookie: ownerCookie } });
+    expect((await app.fetchApi(importUrl)).status).toBe(404);
+    expect((await app.fetchApi("/api/book-sources/nvr_wrong")).status).toBe(404);
   });
 });
