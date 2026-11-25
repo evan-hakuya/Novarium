@@ -41,7 +41,7 @@ AI 复核（见 GLOSSARY「AI 复核」、ADR 0007）用到的 Cloudflare Worker
 - 每次最多 64 题（`questions` 的 `maxProperties`）。题型还有 noul、score，本项目不用。
 - 回答在 `result.answers.<id>`：`choice` 为选中项，`confidence` 为置信度；`result.usage.input_tokens` 为计费 token。
 - 全角空格在题目中写成 `␣`，空行写成 `(空行)`，每行截取前 50 字。
-- 接口 `POST /api/admin/ai/lines`（`apps/server/src/ai-lines.ts`）：请求 `{questions: [{id, prev, line, next, gap}]}`，最多 64 题；返回 `{results: {id: {kind, confidence}}}`。候选行由 core 的 `findCandidateLines` 在整理 Worker 中找出，前端逻辑在 `apps/web/src/lib/ai-review.ts` 与 `use-ai-review.ts`。
+- 接口 `POST /api/admin/ai/lines`（`apps/server/src/ai-lines.ts`）：请求 `{questions: [{id, prev, line, next, gap}]}`，最多 64 题；返回 `{results: {id: {kind, confidence}}}`。候选行由 core 的 `findCandidateLines` 在整理 Worker 中找出，并用 `markSuspicious` 标出可疑行（规则见 ADR 0007）；前端逻辑在 `apps/web/src/lib/ai-review.ts` 与 `use-ai-review.ts`。
 
 ### clairic 请求
 

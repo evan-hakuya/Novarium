@@ -160,9 +160,18 @@ function dropIds(keys: readonly string[], ids: ReadonlySet<string>) {
   return keys.filter((k) => !ids.has(parseLineOverrideKey(k)?.id ?? ""));
 }
 
-/** 还没有 AI 判断、也没有处理过的候选行，优先判断规则最可能出错的行。 */
-export function unjudgedCandidates(candidates: readonly CandidateLine[], options: ProcessOptions, results: AiResults): CandidateLine[] {
+/** 复核范围：只发送可疑行，或发送全部候选行。 */
+export type ReviewScope = "suspicious" | "all";
+
+/** 还没有 AI 判断、也没有处理过的候选行，优先判断可疑行，再按规则最可能出错的程度排列。 */
+export function unjudgedCandidates(
+  candidates: readonly CandidateLine[],
+  options: ProcessOptions,
+  results: AiResults,
+  scope: ReviewScope = "all",
+): CandidateLine[] {
   const handled = new Set([...byId(options.lineOverrides).keys(), ...byId(options.lineIgnores).keys()]);
-  const rest = candidates.filter((c) => !results.has(c.id) && !handled.has(c.id));
-  return [...rest.filter((c) => c.priority), ...rest.filter((c) => !c.priority)];
+  const rest = candidates.filter((c) => !results.has(c.id) && !handled.has(c.id) && (scope === "all" || c.suspicious));
+  const rank = (c: CandidateLine) => (c.suspicious ? 0 : 2) + (c.priority ? 0 : 1);
+  return rest.map((c, i) => [rank(c), i, c] as const).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , c]) => c);
 }

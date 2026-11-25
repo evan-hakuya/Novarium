@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
 import type { AiReview } from "@/lib/use-ai-review";
 
-/** 章节异常面板右上的 AI 复核操作：开始、进度与取消、撤销全部 AI 修正。AI 未开启时不显示。 */
+/**
+ * 章节异常面板右上的 AI 复核操作：复核可疑行（主要）、复核全部（次要）、进度与取消、撤销全部 AI 修正。
+ * AI 未开启时不显示。
+ */
 export function AiReviewToolbar({ ai, disabled }: { ai: AiReview; disabled?: boolean }) {
   if (!ai.available) return null;
   if (ai.progress) {
@@ -26,9 +29,29 @@ export function AiReviewToolbar({ ai, disabled }: { ai: AiReview; disabled?: boo
           撤销全部 AI 修正
         </Button>
       )}
-      <Button size="xs" variant="outline" disabled={disabled || !ai.ready || ai.unjudgedCount === 0} onClick={() => void ai.start()}>
-        {ai.unjudgedCount === 0 ? "AI 已复核全部候选行" : `AI 复核章节（${ai.unjudgedCount} 行未判断）`}
-      </Button>
+      {ai.unjudgedCount === 0 ? (
+        <span className="text-muted-foreground">AI 已复核全部候选行</span>
+      ) : (
+        <>
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={disabled || !ai.ready}
+            title="发送全部还没判断的候选行，包括编号连续、正文正常的章节标题"
+            onClick={() => void ai.start("all")}
+          >
+            复核全部（{ai.unjudgedCount} 行）
+          </Button>
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={disabled || !ai.ready || ai.unjudgedSuspiciousCount === 0}
+            onClick={() => void ai.start("suspicious")}
+          >
+            {ai.unjudgedSuspiciousCount === 0 ? "可疑行已复核" : `AI 复核可疑行（${ai.unjudgedSuspiciousCount} 行）`}
+          </Button>
+        </>
+      )}
     </div>
   );
 }

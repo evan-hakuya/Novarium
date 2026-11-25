@@ -321,7 +321,8 @@ function AiItemText({ item, jump }: { item: AiReviewItem; jump: (order: number) 
       {ai.order !== null && <>（{jump(ai.order)}）</>}
     </>
   );
-  const confidence = ai.confidence === null ? "" : `，置信度 ${ai.confidence.toFixed(2)}`;
+  // 向下取整：0.798 显示为 0.79，不会让未达 0.8 的结果看起来已达标。
+  const confidence = ai.confidence === null ? "" : `，置信度 ${(Math.floor(ai.confidence * 100) / 100).toFixed(2)}`;
   const rule = ai.rule ? `规则判为${LINE_KIND_TEXT[ai.rule]}，` : "";
   if (item.status === "fixed") {
     return (

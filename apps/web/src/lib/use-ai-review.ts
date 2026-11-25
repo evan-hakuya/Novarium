@@ -3,7 +3,7 @@ import { AI_LINE_BATCH_SIZE, AI_LINE_PROMPT_VERSION, AI_LINES_PER_RUN, AI_QUOTA_
 import { describeAiFailure, reviewLines, useAiAvailable, type LineQuestion } from "@/api/ai";
 import { ApiError } from "@/api/books";
 import { cacheScope, deleteCachedResults, deleteExpiredResults, hashBytes, loadCachedResults, saveCachedResults } from "@/lib/ai-cache";
-import { autoApply, reviewAiLines, undoAllAiFixes, unjudgedCandidates, type AiResult } from "@/lib/ai-review";
+import { autoApply, reviewAiLines, undoAllAiFixes, unjudgedCandidates, type AiResult, type ReviewScope } from "@/lib/ai-review";
 import type { Preview } from "@/lib/use-process-preview";
 
 const MODEL = "clef";
@@ -95,20 +95,23 @@ export function useAiReview({
     () => (preview ? unjudgedCandidates(preview.version.candidates, preview.options, results) : []),
     [preview, results],
   );
+  const unjudgedSuspicious = useMemo(() => unjudged.filter((c) => c.suspicious), [unjudged]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (scope: ReviewScope) => {
     if (!preview || !hash || progress) return;
-    const batch = unjudged.slice(0, AI_LINES_PER_RUN);
+    const pool = scope === "suspicious" ? unjudgedSuspicious : unjudged;
+    const batch = pool.slice(0, AI_LINES_PER_RUN);
     if (batch.length === 0) return;
     const percent = Math.max(0.1, batch.length * AI_QUOTA_PERCENT_PER_LINE).toFixed(1);
-    const more = unjudged.length > batch.length ? `（共 ${unjudged.length} 行未判断，单次最多 ${AI_LINES_PER_RUN} 行，其余可以再次复核）` : "";
-    if (!window.confirm(`AI 复核 ${batch.length} 个候选行${more}，预计占用每日免费额度约 ${percent}%。候选行及其上下文会发送到 Cloudflare 处理。确定开始？`)) return;
+    const what = scope === "suspicious" ? "可疑行" : "候选行";
+    const more = pool.length > batch.length ? `（共 ${pool.length} 行未判断，单次最多 ${AI_LINES_PER_RUN} 行，其余可以再次复核）` : "";
+    if (!window.confirm(`AI 复核 ${batch.length} 个${what}${more}，预计占用每日免费额度约 ${percent}%。这些行及其上下文会发送到 Cloudflare 处理。确定开始？`)) return;
 
     const controller = new AbortController();
     abort.current = controller;
     setError(null);
     setProgress({ done: 0, total: batch.length });
-    const scope = cacheScope(hash, MODEL, AI_LINE_PROMPT_VERSION);
+    const cacheKey = cacheScope(hash, MODEL, AI_LINE_PROMPT_VERSION);
     try {
       for (let i = 0; i < batch.length; i += AI_LINE_BATCH_SIZE) {
         const chunk = batch.slice(i, i + AI_LINE_BATCH_SIZE);
@@ -117,7 +120,7 @@ export function useAiReview({
           controller.signal,
         );
         const fresh = new Map(Object.entries(got));
-        await saveCachedResults(scope, hash, fresh).catch(() => {});
+        await saveCachedResults(cacheKey, hash, fresh).catch(() => {});
         // 换了原稿时，旧原稿的结果只留在缓存里。
         if (currentHash.current !== hash) break;
         setResults((prev) => new Map([...prev, ...fresh]));
@@ -132,7 +135,7 @@ export function useAiReview({
       abort.current = null;
       setProgress(null);
     }
-  }, [preview, hash, progress, unjudged]);
+  }, [preview, hash, progress, unjudged, unjudgedSuspicious]);
 
   const cancel = useCallback(() => abort.current?.abort(), []);
 
@@ -152,6 +155,7 @@ export function useAiReview({
     pendingCount: items.filter((i) => i.status === "pending").length,
     fixedCount: preview?.options.lineOverrides.length ?? 0,
     unjudgedCount: unjudged.length,
+    unjudgedSuspiciousCount: unjudgedSuspicious.length,
     ready: !!hash,
     progress,
     error,
