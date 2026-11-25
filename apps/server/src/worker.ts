@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
+import { createBindingAiClient } from "./ai";
 import { createApi, type AppDeps } from "./app";
 import { cleanupStaleUploads } from "./cleanup";
 import * as schema from "./db/schema";
@@ -10,6 +11,7 @@ function createDeps(env: Env): AppDeps {
     runtime: "cloudflare",
     db,
     storage: createR2Storage(env.BOOKS),
+    ai: env.AI ? createBindingAiClient(env.AI) : null,
     ownerPassword: env.OWNER_PASSWORD || undefined,
     // D1 的 batch 在一个事务中执行。
     batch: async (queries) => {

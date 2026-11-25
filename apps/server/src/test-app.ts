@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import type { AiClient } from "./ai";
 import { createApi, type AppDeps } from "./app";
 import { createSessionValue, SESSION_COOKIE } from "./auth";
 import * as schema from "./db/schema";
@@ -17,7 +18,7 @@ export const ORIGIN = "https://novarium.example";
 export const PASSWORD = "test-password";
 const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));
 
-export function createTestApp() {
+export function createTestApp(options: { ai?: AiClient | null } = {}) {
   const sqlite = new Database(":memory:");
   const db = drizzle(sqlite, { schema });
   migrate(db, { migrationsFolder });
@@ -25,6 +26,7 @@ export function createTestApp() {
     runtime: "node",
     db,
     storage: createFsStorage(mkdtempSync(join(tmpdir(), "novarium-test-"))),
+    ai: options.ai ?? null,
     ownerPassword: PASSWORD,
     batch: async (queries) => {
       sqlite.transaction(() => {

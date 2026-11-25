@@ -26,6 +26,11 @@
       "bucket_name": "novarium-books"
     }
   ],
+  // Workers AI，用于 AI 复核（ADR 0007）。按调用计费，后台开关默认关闭；本地开发也调用远程模型。
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
   "observability": {
     "enabled": true,
     "traces": {

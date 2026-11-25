@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ProcessOptions } from "@novarium/core";
 import { describeError } from "@/api/books";
 import { fetchDefaultProcessOptions, processOptionsQueryKey, saveDefaultProcessOptions } from "@/api/settings";
+import { AiSettingsCard } from "@/components/ai-settings-card";
 import { CleaningStepsForm } from "@/components/process-options-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -98,6 +99,7 @@ export function SettingsPage() {
         {done && <span className="text-sm text-muted-foreground">已保存</span>}
         {save.isError && <span className="text-sm text-destructive">{describeError(save.error)}</span>}
       </div>
+      <AiSettingsCard />
     </div>
   );
 }

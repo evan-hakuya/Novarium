@@ -12,4 +12,7 @@ services:
       OWNER_PASSWORD: ${OWNER_PASSWORD:?set OWNER_PASSWORD in .env}
       # 放在反向代理后面时改为 "true"，按 X-Forwarded-For 识别来源 IP。
       TRUST_PROXY: ${TRUST_PROXY:-false}
+      # 可选：Workers AI 的账户 ID 与 API 令牌，用于 AI 复核。不设置时后台不显示 AI 功能。
+      WORKERS_AI_ACCOUNT_ID: ${WORKERS_AI_ACCOUNT_ID:-}
+      WORKERS_AI_TOKEN: ${WORKERS_AI_TOKEN:-}
     restart: unless-stopped
