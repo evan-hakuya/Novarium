@@ -30,6 +30,10 @@ export interface ProcessOptions {
   numberFixes: string[];
   /** 所有者选择忽略的章节序号异常（异常的 key）。只按书设置。 */
   numberIgnores: string[];
+  /** AI 复核得出的行级修正（ADR 0007），见 line-review.ts 的 lineOverrideKey。只按书设置。 */
+  lineOverrides: string[];
+  /** 所有者忽略的 AI 复核结果，见 line-review.ts 的 lineOverrideKey。只按书设置。 */
+  lineIgnores: string[];
 }
 
 export const DEFAULT_PROCESS_OPTIONS: Readonly<ProcessOptions> = Object.freeze({
@@ -48,6 +52,8 @@ export const DEFAULT_PROCESS_OPTIONS: Readonly<ProcessOptions> = Object.freeze({
   chapterPatternMode: "extend",
   numberFixes: [],
   numberIgnores: [],
+  lineOverrides: [],
+  lineIgnores: [],
 });
 
 /** 每本书最多记录的修复或忽略条数。 */
@@ -69,6 +75,9 @@ const BOOLEAN_KEYS = [
   "paragraphSplit",
   "removeLineEndNumbers",
 ] as const satisfies readonly (keyof ProcessOptions)[];
+
+/** 按书记录的异常处理与 AI 修正：字符串数组，每条不超过 MAX_REVIEW_KEY_LENGTH。 */
+const REVIEW_KEYS = ["numberFixes", "numberIgnores", "lineOverrides", "lineIgnores"] as const satisfies readonly (keyof ProcessOptions)[];
 
 /**
  * 校验来自客户端或数据库的整理选项。服务端不得信任客户端。
@@ -111,9 +120,9 @@ export function parseProcessOptions(
   // 早期保存的整理选项没有这一项；那时本书正则会替换内置规则。
   const mode = v.chapterPatternMode ?? "replace";
   if (mode !== "extend" && mode !== "replace") return { ok: false, error: "chapterPatternMode must be extend or replace" };
-  // 早期保存的整理选项没有这两项，视为没有处理过异常。
-  const reviews: Record<"numberFixes" | "numberIgnores", string[]> = { numberFixes: [], numberIgnores: [] };
-  for (const key of ["numberFixes", "numberIgnores"] as const) {
+  // 早期保存的整理选项没有这几项，视为没有处理过异常。
+  const reviews: Record<(typeof REVIEW_KEYS)[number], string[]> = { numberFixes: [], numberIgnores: [], lineOverrides: [], lineIgnores: [] };
+  for (const key of REVIEW_KEYS) {
     const list = v[key] ?? [];
     if (
       !Array.isArray(list) ||

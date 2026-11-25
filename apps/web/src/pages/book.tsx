@@ -67,6 +67,7 @@ function OptionsSummary({ options }: { options: Partial<ProcessOptions> }) {
     }`,
     ...(options.numberFixes?.length ? [`修复序号异常 ${options.numberFixes.length} 处`] : []),
     ...(options.numberIgnores?.length ? [`忽略序号异常 ${options.numberIgnores.length} 处`] : []),
+    ...(options.lineOverrides?.length ? [`AI 修正 ${options.lineOverrides.length} 处`] : []),
     `过滤词 ${options.filterWords?.length ?? 0} 个（阈值 ${options.filterMaxLineLength || "不限"}）`,
   ];
   return <p className="mt-1 text-xs text-muted-foreground">整理选项 · {parts.join(" · ")}</p>;

@@ -2,9 +2,11 @@
 export { DEFAULT_PROCESS_OPTIONS, parseProcessOptions, type ProcessOptions } from "./options";
 export { decodeManuscript } from "./decode";
 export { manuscriptHead } from "./head";
+export * from "./line-review";
 export { cleanText } from "./clean";
 export {
   checkChapterPattern,
+  findCandidateLines,
   splitChapters,
   PREFACE_TITLE,
   WHOLE_BOOK_TITLE,

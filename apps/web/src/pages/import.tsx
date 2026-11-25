@@ -1,5 +1,6 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useMemo, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import type { ProcessOptions } from "@novarium/core";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   booksQueryKey,
@@ -13,6 +14,7 @@ import {
 } from "@/api/books";
 import { fetchDefaultProcessOptions, processOptionsQueryKey } from "@/api/settings";
 import { SuggestionLine, useAiMetadata } from "@/components/ai-metadata";
+import { AiReviewToolbar } from "@/components/ai-review-toolbar";
 import { OptionsPanel } from "@/components/options-panel";
 import { PreviewBrowser } from "@/components/preview-browser";
 import { Button } from "@/components/ui/button";
@@ -21,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { guessBookName } from "@/lib/book-name";
 import { countPending, reviewNumbers } from "@/lib/number-review";
+import { useAiReview } from "@/lib/use-ai-review";
 import { useProcessPreview } from "@/lib/use-process-preview";
 
 interface Source {
@@ -40,6 +43,8 @@ export function ImportPage() {
   const [author, setAuthor] = useState("");
   const [intro, setIntro] = useState("");
   const ai = useAiMetadata(source);
+  const rerun = useCallback((next: ProcessOptions) => source && void run(source.bytes, next), [source, run]);
+  const review = useAiReview({ bytes: source?.bytes ?? null, preview, processing, onChangeOptions: rerun });
   // 书库中同名同作者的书；不为 null 时等待所有者选择导入方式。
   const [duplicates, setDuplicates] = useState<DuplicateBook[] | null>(null);
 
@@ -94,6 +99,7 @@ export function ImportPage() {
         { title, author, intro, original: source.file, text: version.text, chapters: version.chapters, options: used },
         (step) => setUploadStep(stepText[step]),
       );
+      await review.clearCache();
       await queryClient.invalidateQueries({ queryKey: booksQueryKey });
       await navigate({ to: "/books/$bookId", params: { bookId: id } });
     } catch (e) {
@@ -116,6 +122,7 @@ export function ImportPage() {
         (step) => setUploadStep(stepText[step]),
         source.file,
       );
+      await review.clearCache();
       await queryClient.invalidateQueries({ queryKey: ["books"] });
       await navigate({ to: "/books/$bookId", params: { bookId } });
     } catch (e) {
@@ -128,7 +135,10 @@ export function ImportPage() {
   const uploading = uploadStep !== null;
   const busy = processing || uploading;
   const version = preview?.version;
-  const pending = useMemo(() => (preview ? countPending(reviewNumbers(preview.version.chapters, preview.options)) : 0), [preview]);
+  const pending = useMemo(
+    () => (preview ? countPending(reviewNumbers(preview.version.chapters, preview.options)) : 0) + review.pendingCount,
+    [preview, review.pendingCount],
+  );
   const suggestion = ai.suggestion;
   const adoptAll = () => {
     if (!suggestion) return;
@@ -202,9 +212,9 @@ export function ImportPage() {
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
               {version.chapters.length} 章 · 整理后 {formatBytes(version.text.byteLength)}
-              {pending > 0 && <span className="text-destructive"> · 还有 {pending} 处章节序号异常待处理</span>}
+              {pending > 0 && <span className="text-destructive"> · 还有 {pending} 处章节异常待处理</span>}
             </span>
-            <Button onClick={onSubmit} disabled={busy || !title.trim() || pending > 0 || duplicates !== null}>
+            <Button onClick={onSubmit} disabled={busy || !title.trim() || pending > 0 || duplicates !== null || !!review.progress}>
               提交
             </Button>
           </div>
@@ -244,6 +254,8 @@ export function ImportPage() {
             options={preview.options}
             onChangeOptions={(next) => source && void run(source.bytes, next)}
             onPatchOptions={patchOptions}
+            aiItems={review.items}
+            toolbar={<AiReviewToolbar ai={review} disabled={busy} />}
             disabled={busy}
           />
         </>

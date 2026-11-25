@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { isFixable, type ProcessOptions } from "@novarium/core";
+import type { ProcessOptions } from "@novarium/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ANOMALY_KINDS, itemKind, type ReviewItem, type ReviewStatus } from "@/lib/number-review";
+import {
+  fixAiLines,
+  ignoreAiLines,
+  LINE_KIND_TEXT,
+  unfixAiLines,
+  unignoreAiLines,
+  type AiReviewItem,
+} from "@/lib/ai-review";
+import { ANOMALY_KINDS, canFix, isAiItem, itemKind, type ReviewItem, type ReviewKind, type ReviewStatus } from "@/lib/number-review";
 import { cn } from "@/lib/utils";
 
 type Tab = ReviewStatus | "all";
-type KindTab = ReturnType<typeof itemKind> | "all";
+type KindTab = ReviewKind | "all";
 
 const TABS: { value: Tab; label: string }[] = [
   { value: "pending", label: "待处理" },
@@ -32,8 +40,8 @@ const without = (list: string[], keys: ReadonlySet<string>) => list.filter((k) =
 const union = (list: string[], keys: Iterable<string>) => [...new Set([...list, ...keys])];
 
 /**
- * 章节序号异常的逐条处理：修复（移动乱序章节）、忽略、撤销，支持勾选后批量操作。
- * 系统已自动处理的分卷边界显示「无需处理」。
+ * 章节异常的逐条处理：章节序号异常（修复即移动乱序章节）与 AI 复核结果（修复即按 AI 的判断修正这一行），
+ * 可以修复、忽略、撤销，支持勾选后批量操作。系统已自动处理的分卷边界显示「无需处理」。
  */
 export function NumberReviewPanel({
   items,
@@ -42,6 +50,7 @@ export function NumberReviewPanel({
   options,
   onChangeOptions,
   onPatchOptions,
+  toolbar,
   disabled,
 }: {
   items: ReviewItem[];
@@ -50,6 +59,8 @@ export function NumberReviewPanel({
   options: ProcessOptions;
   onChangeOptions: (next: ProcessOptions) => void;
   onPatchOptions: (next: ProcessOptions) => void;
+  /** 标题右侧的操作区，例如 AI 复核。 */
+  toolbar?: ReactNode;
   disabled?: boolean;
 }) {
   const counts = useMemo(() => {
@@ -75,21 +86,47 @@ export function NumberReviewPanel({
     setChecked((prev) => new Set([...prev].filter((k) => keys.has(k))));
   }, [visible]);
 
+  const header = (text: string) => (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <span className="font-medium">章节异常：{text}</span>
+      {toolbar}
+    </div>
+  );
+
   if (items.length === 0) {
-    return <section className="rounded-xl border p-4 text-sm font-medium">章节序号：没有发现异常</section>;
+    return <section className="flex flex-col gap-3 rounded-xl border p-4 text-sm">{header("没有发现异常")}</section>;
   }
 
-  const fix = (keys: string[]) => {
-    const set = new Set(keys);
-    onChangeOptions({ ...options, numberFixes: union(options.numberFixes, keys), numberIgnores: without(options.numberIgnores, set) });
+  // 章节序号异常按 key 记录；AI 复核结果按行记录（见 lib/ai-review.ts）。
+  const split = (list: ReviewItem[]) => {
+    const ai = list.filter(isAiItem);
+    return { numberKeys: list.filter((i) => !isAiItem(i)).map((i) => i.key), ai };
   };
-  const unfix = (keys: string[]) => onChangeOptions({ ...options, numberFixes: without(options.numberFixes, new Set(keys)) });
-  const ignore = (keys: string[]) => onPatchOptions({ ...options, numberIgnores: union(options.numberIgnores, keys) });
-  const unignore = (keys: string[]) => onPatchOptions({ ...options, numberIgnores: without(options.numberIgnores, new Set(keys)) });
+  const apply = (list: ReviewItem[], number: (o: ProcessOptions, keys: string[]) => ProcessOptions, ai: (o: ProcessOptions, items: AiReviewItem[]) => ProcessOptions) => {
+    const parts = split(list);
+    let next = parts.numberKeys.length ? number(options, parts.numberKeys) : options;
+    if (parts.ai.length) next = ai(next, parts.ai);
+    return next;
+  };
+  // 修复会改变分章，需要重新整理；忽略只改记录。
+  const fix = (list: ReviewItem[]) =>
+    onChangeOptions(
+      apply(
+        list,
+        (o, keys) => ({ ...o, numberFixes: union(o.numberFixes, keys), numberIgnores: without(o.numberIgnores, new Set(keys)) }),
+        fixAiLines,
+      ),
+    );
+  const unfix = (list: ReviewItem[]) =>
+    onChangeOptions(apply(list, (o, keys) => ({ ...o, numberFixes: without(o.numberFixes, new Set(keys)) }), unfixAiLines));
+  const ignore = (list: ReviewItem[]) =>
+    onPatchOptions(apply(list, (o, keys) => ({ ...o, numberIgnores: union(o.numberIgnores, keys) }), ignoreAiLines));
+  const unignore = (list: ReviewItem[]) =>
+    onPatchOptions(apply(list, (o, keys) => ({ ...o, numberIgnores: without(o.numberIgnores, new Set(keys)) }), unignoreAiLines));
 
   const batchable = tab === "pending" || tab === "ignored" || tab === "fixed";
   const selected = visible.filter((i) => checked.has(i.key));
-  const selectedFixable = selected.filter((i) => i.status === "pending" && isFixable(i.anomaly)).map((i) => i.key);
+  const selectedFixable = selected.filter(canFix);
   const allChecked = visible.length > 0 && selected.length === visible.length;
 
   const jump = (order: number) => (
@@ -100,10 +137,7 @@ export function NumberReviewPanel({
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border p-4 text-sm">
-      <div className="font-medium">
-        章节序号：
-        {counts.pending > 0 ? `${counts.pending} 处异常待处理，处理完才能提交` : "异常已全部处理"}
-      </div>
+      {header(counts.pending > 0 ? `${counts.pending} 处待处理，处理完才能提交` : "已全部处理")}
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
         <TabsList>
           {TABS.map((t) => (
@@ -145,7 +179,7 @@ export function NumberReviewPanel({
                   size="sm"
                   variant="outline"
                   disabled={disabled || selected.length === 0}
-                  onClick={() => ignore(selected.map((i) => i.key))}
+                  onClick={() => ignore(selected)}
                 >
                   批量忽略{selected.length > 0 && ` ${selected.length}`}
                 </Button>
@@ -156,7 +190,7 @@ export function NumberReviewPanel({
                 size="sm"
                 variant="outline"
                 disabled={disabled || selected.length === 0}
-                onClick={() => (tab === "ignored" ? unignore : unfix)(selected.map((i) => i.key))}
+                onClick={() => (tab === "ignored" ? unignore : unfix)(selected)}
               >
                 批量撤销{selected.length > 0 && ` ${selected.length}`}
               </Button>
@@ -194,23 +228,23 @@ export function NumberReviewPanel({
               </span>
               {tab === "all" && <Badge variant={item.status === "pending" ? "destructive" : "outline"}>{STATUS_TEXT[item.status]}</Badge>}
               <div className="flex shrink-0 gap-1">
-                {item.status === "pending" && isFixable(item.anomaly) && (
-                  <Button size="xs" disabled={disabled} onClick={() => fix([item.key])}>
+                {canFix(item) && (
+                  <Button size="xs" disabled={disabled} onClick={() => fix([item])}>
                     修复
                   </Button>
                 )}
                 {item.status === "pending" && (
-                  <Button size="xs" variant="outline" disabled={disabled} onClick={() => ignore([item.key])}>
+                  <Button size="xs" variant="outline" disabled={disabled} onClick={() => ignore([item])}>
                     忽略
                   </Button>
                 )}
                 {item.status === "ignored" && (
-                  <Button size="xs" variant="ghost" disabled={disabled} onClick={() => unignore([item.key])}>
+                  <Button size="xs" variant="ghost" disabled={disabled} onClick={() => unignore([item])}>
                     撤销忽略
                   </Button>
                 )}
                 {item.status === "fixed" && (
-                  <Button size="xs" variant="ghost" disabled={disabled} onClick={() => unfix([item.key])}>
+                  <Button size="xs" variant="ghost" disabled={disabled} onClick={() => unfix([item])}>
                     撤销修复
                   </Button>
                 )}
@@ -227,12 +261,14 @@ export function NumberReviewPanel({
       )}
       <p className="text-xs text-muted-foreground">
         修复乱序：把章节连同其后的番外等无序号章节，移到同一分卷中按序号应在的位置。缺号与重复编号无法自动修复，请检查原稿或章节正则后忽略。
+        AI 复核：修复即按 AI 的判断修正这一行；作者公告修复后并入上一章，忽略则保留为章节。置信度不低于 0.8 的判断已自动修复，标为「AI」。
       </p>
     </section>
   );
 }
 
 function ItemText({ item, jump }: { item: ReviewItem; jump: (order: number) => ReactNode }) {
+  if (isAiItem(item)) return <AiItemText item={item} jump={jump} />;
   if (item.status === "fixed") {
     return (
       <>
@@ -273,6 +309,42 @@ function ItemText({ item, jump }: { item: ReviewItem; jump: (order: number) => R
   return (
     <>
       乱序：{jump(a.order)}（第 {a.number} 章）不在按序号的位置上
+    </>
+  );
+}
+
+function AiItemText({ item, jump }: { item: AiReviewItem; jump: (order: number) => ReactNode }) {
+  const { ai } = item;
+  const line = (
+    <>
+      「{ai.text}」
+      {ai.order !== null && <>（{jump(ai.order)}）</>}
+    </>
+  );
+  const confidence = ai.confidence === null ? "" : `，置信度 ${ai.confidence.toFixed(2)}`;
+  const rule = ai.rule ? `规则判为${LINE_KIND_TEXT[ai.rule]}，` : "";
+  if (item.status === "fixed") {
+    return (
+      <>
+        <Badge variant="secondary" className="mr-1">
+          AI
+        </Badge>
+        {line} 已设为{LINE_KIND_TEXT[ai.suggested]}
+        {confidence && `（${confidence.slice(1)}）`}
+      </>
+    );
+  }
+  if (ai.kind === "notice") {
+    return (
+      <>
+        作者公告：{line} {rule}AI 判为作者公告{confidence}
+      </>
+    );
+  }
+  return (
+    <>
+      AI 复核：{line} {rule}AI 判为{LINE_KIND_TEXT[ai.suggested]}
+      {confidence}
     </>
   );
 }

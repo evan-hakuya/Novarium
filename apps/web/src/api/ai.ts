@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { LineKind } from "@novarium/core";
 import { ApiError, request } from "./books";
 
 /** AI 复核的状态（ADR 0007）。configured：部署配置了 AI；enabled：所有者开启了 AI。 */
@@ -34,6 +35,23 @@ export const suggestMetadata = (fileName: string, head: string) =>
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ fileName, head }),
   }).then((r) => r.suggestion);
+
+/** AI 复核章节的一题。 */
+export interface LineQuestion {
+  id: string;
+  prev: string;
+  line: string;
+  next: string;
+  gap: boolean;
+}
+
+export const reviewLines = (questions: LineQuestion[], signal?: AbortSignal) =>
+  request<{ results: Record<string, { kind: LineKind; confidence: number }> }>("/api/admin/ai/lines", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ questions }),
+    signal,
+  }).then((r) => r.results);
 
 /** 整理页用：AI 已配置且已开启时才显示 AI 按钮。 */
 export function useAiAvailable(): boolean {

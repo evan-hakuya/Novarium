@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ProcessOptions } from "@novarium/core";
 import { ChapterBrowser, ChapterText } from "@/components/chapter-browser";
 import { NumberReviewPanel } from "@/components/number-review-panel";
+import type { AiReviewItem } from "@/lib/ai-review";
 import { pendingOrders, reviewNumbers } from "@/lib/number-review";
 import { chapterText, type ProcessedVersion } from "@/lib/process";
+
+const NO_AI_ITEMS: AiReviewItem[] = [];
 
 /**
  * 浏览本地整理结果：章节序号异常的处理与章节正文。
@@ -14,16 +17,21 @@ export function PreviewBrowser({
   options,
   onChangeOptions,
   onPatchOptions,
+  aiItems = NO_AI_ITEMS,
+  toolbar,
   disabled,
 }: {
   version: ProcessedVersion;
   options: ProcessOptions;
   onChangeOptions: (next: ProcessOptions) => void;
   onPatchOptions: (next: ProcessOptions) => void;
+  /** AI 复核结果，与章节序号异常一起显示。 */
+  aiItems?: AiReviewItem[];
+  toolbar?: ReactNode;
   disabled?: boolean;
 }) {
   const [selected, setSelected] = useState(0);
-  const items = useMemo(() => reviewNumbers(version.chapters, options), [version.chapters, options]);
+  const items = useMemo(() => [...reviewNumbers(version.chapters, options), ...aiItems], [version.chapters, options, aiItems]);
   const flagged = useMemo(() => pendingOrders(items), [items]);
 
   // 重新整理后章节可能变少，越界时回到第一章。
@@ -40,6 +48,7 @@ export function PreviewBrowser({
         options={options}
         onChangeOptions={onChangeOptions}
         onPatchOptions={onPatchOptions}
+        toolbar={toolbar}
         disabled={disabled}
       />
       <ChapterBrowser
