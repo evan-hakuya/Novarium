@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import * as schema from "./db/schema";
 import { addBook, createTestApp, ORIGIN, ownerCookieHeader } from "./test-app";
 
 // 书源契约测试：按 Legado 的方式使用导出的书源 JSON——
@@ -8,7 +9,10 @@ type BookSource = {
   bookSourceUrl: string;
   header: string;
   searchUrl: string;
+  enabledExplore: boolean;
+  exploreUrl: string;
   ruleSearch: Record<string, string>;
+  ruleExplore: Record<string, string>;
   ruleBookInfo: Record<string, string>;
   ruleToc: Record<string, string>;
   ruleContent: Record<string, string>;
@@ -43,6 +47,20 @@ function legadoClient(source: BookSource, fetchApi: (url: string, init?: Request
         author: jsonPath(item, source.ruleSearch.author!),
         lastChapter: jsonPath(item, source.ruleSearch.lastChapter!),
         bookUrl: new URL(jsonPath(item, source.ruleSearch.bookUrl!), url).toString(),
+      }));
+    },
+    /** 发现页入口。exploreUrl 是 JSON 数组形式的 [{ title, url }]。 */
+    exploreEntries() {
+      expect(source.enabledExplore).toBe(true);
+      return JSON.parse(source.exploreUrl) as { title: string; url: string }[];
+    },
+    async explore(entryUrl: string, page = 1) {
+      const url = new URL(entryUrl.replace("{{page}}", String(page)), source.bookSourceUrl).toString();
+      const res = await get(url);
+      return (jsonPath(res.body, source.ruleExplore.bookList!) as unknown[]).map((item) => ({
+        name: jsonPath(item, source.ruleExplore.name!) as string,
+        kind: jsonPath(item, source.ruleExplore.kind!) as string,
+        bookUrl: new URL(jsonPath(item, source.ruleExplore.bookUrl!), url).toString(),
       }));
     },
     async bookInfo(bookUrl: string) {
@@ -118,6 +136,60 @@ describe("书源", () => {
       expect(req.url.startsWith(ORIGIN)).toBe(true);
       expect(req.url).not.toContain("nvr_");
     }
+  });
+
+  describe("发现页", () => {
+    const tag = (bookId: string, ...tags: string[]) =>
+      app.deps.db.insert(schema.bookTags).values(tags.map((t) => ({ bookId, tag: t })));
+
+    it("为每个标签列出入口，点进去列出带这个标签的书", async () => {
+      await tag("11111111-1111-4111-8111-111111111111", "短篇", "试读 & 样章");
+      await tag("22222222-2222-4222-8222-222222222222", "短篇");
+      const client = legadoClient((await createToken("平板")).bookSource, app.fetchApi);
+      const entries = client.exploreEntries();
+      expect(entries.map((e) => e.title)).toEqual(["全部", "短篇", "试读 & 样章"]);
+
+      const names = async (url: string) => (await client.explore(url)).map((b) => b.name).sort();
+      expect(await names(entries[0]!.url)).toEqual(["100%_纯净", "归藏试读"]);
+      expect(await names(entries[1]!.url)).toEqual(["100%_纯净", "归藏试读"]);
+      const special = await client.explore(entries[2]!.url);
+      expect(special).toEqual([
+        {
+          name: "归藏试读",
+          kind: "短篇,试读 & 样章",
+          bookUrl: `${ORIGIN}/api/source/books/11111111-1111-4111-8111-111111111111`,
+        },
+      ]);
+      expect((await client.bookInfo(special[0]!.bookUrl)).name).toBe("归藏试读");
+    });
+
+    it("分页，每页 20 本", async () => {
+      for (let i = 0; i < 21; i++) {
+        const id = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+        await addBook(app.deps, id, `长篇${i}`, "某人", [["第一章", "正文\n"]]);
+        await tag(id, "长篇");
+      }
+      const client = legadoClient((await createToken("平板")).bookSource, app.fetchApi);
+      const entry = client.exploreEntries().find((e) => e.title === "长篇")!;
+      const first = await client.explore(entry.url, 1);
+      const second = await client.explore(entry.url, 2);
+      expect(first).toHaveLength(20);
+      expect(second).toHaveLength(1);
+      expect(new Set([...first, ...second].map((b) => b.name)).size).toBe(21);
+      expect(await client.explore(entry.url, 3)).toEqual([]);
+    });
+
+    it("标签变化后，重新导入书源即可看到新的入口", async () => {
+      const { importUrl } = await createToken("平板");
+      const importSource = async () => ((await (await app.fetchApi(importUrl)).json()) as BookSource[])[0]!;
+      expect(legadoClient(await importSource(), app.fetchApi).exploreEntries().map((e) => e.title)).toEqual(["全部"]);
+
+      await tag("22222222-2222-4222-8222-222222222222", "新标签");
+      expect(legadoClient(await importSource(), app.fetchApi).exploreEntries().map((e) => e.title)).toEqual([
+        "全部",
+        "新标签",
+      ]);
+    });
   });
 
   it("目录在每卷第一章前插入卷条目", async () => {
