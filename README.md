@@ -51,6 +51,15 @@ docker compose up -d
 - 代理需要传递 `X-Forwarded-Proto` 与 `X-Forwarded-Host`，书源中的地址才会是外部地址。
 - 设置环境变量 `TRUST_PROXY=true`，并让代理把客户端地址追加到 `X-Forwarded-For`。登录失败次数按来源 IP 限制；不设置时，所有请求都算作代理的 IP。没有反向代理时不要设置，否则客户端可以伪造来源 IP。
 
+## AI 复核（可选）
+
+整理时可以手动让 Cloudflare Workers AI 识别书名、作者、简介，并复核章节划分。原稿片段会发送到 Cloudflare 处理，所以默认关闭，在后台设置页开启。每个 Cloudflare 账户每天有 10,000 Neurons 免费额度。
+
+- Cloudflare 部署：`wrangler.jsonc` 已包含 `ai` 绑定，不需要额外配置。
+- Docker 部署：在 `.env` 中设置 `WORKERS_AI_ACCOUNT_ID`（Cloudflare 账户 ID）与 `WORKERS_AI_TOKEN`（有 Workers AI 权限的 API 令牌）。不设置时后台不显示 AI 功能。
+
+设置页的「测试连接」会发出一道很小的测试题，确认配置可用。
+
 ## 登录保护
 
 同一来源 IP 在 15 分钟内登录失败 5 次后，这个 IP 要等到窗口结束才能再登录（密码正确也不行）。全书库在 15 分钟内失败 50 次后，所有登录暂停到窗口结束。登录页会显示还需等待多久。

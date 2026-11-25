@@ -39,19 +39,22 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details?: string[];
+  /** AI 失败的类型（ai_unavailable 时有值）。 */
+  readonly kind?: string;
 
-  constructor(status: number, code: string, details?: string[]) {
+  constructor(status: number, code: string, details?: string[], kind?: string) {
     super(code);
     this.status = status;
     this.code = code;
     this.details = details;
+    this.kind = kind;
   }
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
-  const body = (await res.json().catch(() => null)) as ({ error?: string; details?: string[] } & T) | null;
-  if (!res.ok) throw new ApiError(res.status, body?.error ?? `http_${res.status}`, body?.details);
+  const body = (await res.json().catch(() => null)) as ({ error?: string; details?: string[]; kind?: string } & T) | null;
+  if (!res.ok) throw new ApiError(res.status, body?.error ?? `http_${res.status}`, body?.details, body?.kind);
   return body as T;
 }
 
@@ -197,6 +200,9 @@ const errorText: Record<string, string> = {
   token_revoked: "这个访问令牌已撤销。",
   token_not_viewable: "这个访问令牌创建时没有保存明文，无法再次查看书源。",
   unauthorized: "登录已失效，请重新登录。",
+  ai_not_configured: "部署没有配置 AI。",
+  ai_disabled: "AI 已在设置中关闭。",
+  ai_unavailable: "AI 调用失败。",
 };
 
 export function describeError(error: unknown): string {

@@ -5,8 +5,9 @@ AI 复核（见 GLOSSARY「AI 复核」、ADR 0007）用到的 Cloudflare Worker
 ## 调用方式
 
 - Cloudflare 部署：Worker 的 `ai` 绑定，`env.AI.run("@cf/cloudflare/clef", body)`。
-- Docker 部署：`POST https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/cloudflare/{model}`，请求头 `Authorization: Bearer <API 令牌>`（令牌需 Workers AI 权限）。响应外层 `{success, errors, result}`。
+- Docker 部署：`POST https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/cloudflare/{model}`，请求头 `Authorization: Bearer <API 令牌>`（令牌需 Workers AI 权限）。响应外层 `{success, errors, result}`。账户 ID 与令牌来自环境变量 `WORKERS_AI_ACCOUNT_ID`、`WORKERS_AI_TOKEN`。
 - 只能从服务端调用，令牌不下发到网页。
+- 客户端在 `apps/server/src/ai.ts`。错误按 [Workers AI 错误码](https://developers.cloudflare.com/workers-ai/platform/errors/) 归类：3036 额度用完 → `quota`；3040 或 HTTP 429 → `busy`；3007、3008、408 或 30 秒超时 → `timeout`；其他（含 5035 需要付费版）→ `unavailable`。AI 路由用 `requireAi` 检查开关，用 `aiErrorResponse` 返回 502 `ai_unavailable`。
 
 ## 模型
 

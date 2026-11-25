@@ -1,6 +1,8 @@
 import { Hono, type Context } from "hono";
 import { sql } from "drizzle-orm";
 import { getCookie } from "hono/cookie";
+import type { AiClient } from "./ai";
+import { createAiRoutes } from "./ai-routes";
 import {
   SESSION_COOKIE,
   clearSessionCookie,
@@ -25,6 +27,8 @@ export interface AppDeps {
   runtime: Runtime;
   db: Db;
   storage: StorageProvider;
+  /** Workers AI 客户端；部署没有配置 AI 时为 null（ADR 0007）。 */
+  ai: AiClient | null;
   // 部署时设置的所有者密码；未设置时无法登录。
   ownerPassword: string | undefined;
   /** 原子地执行一组写入：全部成功或全部不生效。 */
@@ -97,6 +101,7 @@ export function createApi(getDeps: (c: { env: unknown }) => AppDeps) {
   api.route("/admin", createMetadataRoutes());
   api.route("/admin", createTokenRoutes());
   api.route("/admin", createSettingsRoutes());
+  api.route("/admin", createAiRoutes());
 
   // 阅读客户端用的书源 API，凭访问令牌访问。
   const sourcePath = SOURCE_BASE.slice("/api".length);

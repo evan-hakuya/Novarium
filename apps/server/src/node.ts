@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { serveStatic } from "@hono/node-server/serve-static";
+import { createAiClient } from "./ai";
 import { createApi, type AppDeps } from "./app";
 import { cleanupStaleUploads, STALE_UPLOAD_MS } from "./cleanup";
 import * as schema from "./db/schema";
@@ -33,6 +34,8 @@ const deps: AppDeps = {
   runtime: "node",
   db,
   storage: createFsStorage(join(dataDir, "books")),
+  // 设置 WORKERS_AI_ACCOUNT_ID 与 WORKERS_AI_TOKEN 后，经 REST 接口调用 Workers AI。
+  ai: createAiClient({ accountId: process.env.WORKERS_AI_ACCOUNT_ID, token: process.env.WORKERS_AI_TOKEN }),
   ownerPassword: process.env.OWNER_PASSWORD || undefined,
   // better-sqlite3 是同步驱动：在一个事务中依次执行。
   batch: async (queries) => {
