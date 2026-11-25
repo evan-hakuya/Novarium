@@ -30,6 +30,10 @@ export function validateChapterIndex(chapters: unknown, textByteLength: number):
     if (typeof c.title !== "string" || !c.title.trim()) fail(i, "title must be a non-empty string");
     else if (c.title.length > MAX_TITLE_LENGTH) fail(i, `title longer than ${MAX_TITLE_LENGTH}`);
     if (c.number !== null && !isCount(c.number)) fail(i, "number must be null or a non-negative integer");
+    // 早期客户端不提交卷，视为没有卷。
+    if (c.volume !== undefined && c.volume !== null && (typeof c.volume !== "string" || !c.volume.trim() || c.volume.length > MAX_TITLE_LENGTH)) {
+      fail(i, `volume must be null or a non-empty string of at most ${MAX_TITLE_LENGTH} characters`);
+    }
     if (!isCount(c.byteOffset) || !isCount(c.byteLength)) {
       fail(i, "byteOffset and byteLength must be non-negative integers");
       return;

@@ -66,9 +66,16 @@ export function splitChapters(text: string, options: SplitOptions): ChapterDraft
 
   const chapters: ChapterDraft[] = [];
   for (const segment of chapterSegments(lines, options)) {
+    if (!segment.isChapter) continue;
     // 有标题的章节，正文从标题的下一行开始。
     const bodyFrom = segment.titleLine === null ? segment.from : segment.titleLine + 1;
-    chapters.push({ order: chapters.length, title: segment.title, number: segment.number, ...bodyRange(bodyFrom, segment.to) });
+    chapters.push({
+      order: chapters.length,
+      title: segment.title,
+      number: segment.number,
+      volume: segment.volume,
+      ...bodyRange(bodyFrom, segment.to),
+    });
   }
   return chapters;
 }
@@ -81,28 +88,77 @@ interface Segment {
   /** 行范围 [from, to)，含标题行。所有段首尾相接，覆盖全部行。 */
   from: number;
   to: number;
+  /** 所属卷的标题；没有卷时为 null。 */
+  volume: string | null;
+  /** 卷标题所在的段：它不随章节修复移动，并开始一个新的分卷。 */
+  volumeStart: boolean;
+  /** 是否生成章节。卷标题与第一章之间没有正文时，卷标题段不生成章节。 */
+  isChapter: boolean;
 }
 
-/** 按章节标题把正文的行分段，每段对应一个章节。 */
+const VOLUME_NUMERAL = "[\\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+";
+const volumeHeadRegex = new RegExp(
+  `^(?:第\\s*${VOLUME_NUMERAL}\\s*([卷部])|卷\\s*${VOLUME_NUMERAL}|[上中下]\\s*[卷部册])(?=$|[\\s：:·\\-—（(【「《])`,
+);
+const chapterInVolumeTitleRegex = new RegExp(`第?\\s*${VOLUME_NUMERAL}\\s*[章节回]`);
+
+/**
+ * 卷标题：「第一卷 xxx」「卷三」「上卷」「第二部 xxx」这类短行。
+ * 这本书本身用「卷」或「部」作章节单位时，它们是章节，不是卷。
+ * 「第一卷 第三章 xxx」这类带章节号的行仍是章节标题。
+ */
+function volumeMatcher(unit: string | null): (line: string) => boolean {
+  return (line) => {
+    const t = line.trim();
+    if (!t || [...t].length > CHAPTER_TITLE_MAX_LEN || /[。！？!?]$/.test(t)) return false;
+    const m = volumeHeadRegex.exec(t);
+    if (!m) return false;
+    if (m[1] && m[1] === unit) return false;
+    if (unit === "卷" && !m[1]) return false;
+    return !chapterInVolumeTitleRegex.test(t.slice(m[0].length));
+  };
+}
+
+/** 整理时判断卷标题行，使它独立成段。不区分章节单位：把章节标题当作独立行也不影响结果。 */
+export const isVolumeTitleLine = volumeMatcher(null);
+
+/**
+ * 按章节标题与卷标题把正文的行分段。卷标题之后的章节都属于这一卷，直到下一个卷标题。
+ * 卷标题与第一章之间有正文时（如卷首语），这段正文作为一个以卷标题为标题的章节。
+ */
 function chapterSegments(lines: string[], options: SplitOptions): Segment[] {
-  const isTitle = titleMatcher(lines, options);
-  const titleLines: number[] = [];
+  const unit = detectChapterUnit(lines);
+  const isTitle = titleMatcher(lines, options, unit);
+  // 只用本书正则时，所有者完全接管标题识别，不再识别卷。
+  const isVolume = options.chapterPatternMode === "replace" && options.chapterPattern ? () => false : volumeMatcher(unit);
+  const titleLines: { line: number; volume: boolean }[] = [];
   lines.forEach((line, i) => {
-    if (isTitle(line)) titleLines.push(i);
+    if (isVolume(line)) titleLines.push({ line: i, volume: true });
+    else if (isTitle(line)) titleLines.push({ line: i, volume: false });
   });
   if (titleLines.length === 0) {
-    return [{ title: WHOLE_BOOK_TITLE, number: null, titleLine: null, from: 0, to: lines.length }];
+    return [
+      { title: WHOLE_BOOK_TITLE, number: null, titleLine: null, from: 0, to: lines.length, volume: null, volumeStart: false, isChapter: true },
+    ];
   }
   const segments: Segment[] = [];
-  const firstTitle = titleLines[0]!;
+  const firstTitle = titleLines[0]!.line;
   if (lines.slice(0, firstTitle).some((line) => line.trim())) {
-    segments.push({ title: PREFACE_TITLE, number: null, titleLine: null, from: 0, to: firstTitle });
+    segments.push({ title: PREFACE_TITLE, number: null, titleLine: null, from: 0, to: firstTitle, volume: null, volumeStart: false, isChapter: true });
   }
-  titleLines.forEach((lineIndex, k) => {
+  let volume: string | null = null;
+  titleLines.forEach(({ line: lineIndex, volume: isVolumeLine }, k) => {
     const title = lines[lineIndex]!.trim();
     // 第一个标题前只有空行时，这些空行并入第一章。
     const from = k === 0 && segments.length === 0 ? 0 : lineIndex;
-    segments.push({ title, number: extractChapterOrder(title), titleLine: lineIndex, from, to: titleLines[k + 1] ?? lines.length });
+    const to = titleLines[k + 1]?.line ?? lines.length;
+    if (isVolumeLine) {
+      volume = title;
+      const hasBody = lines.slice(lineIndex + 1, to).some((line) => line.trim());
+      segments.push({ title, number: null, titleLine: lineIndex, from, to, volume, volumeStart: true, isChapter: hasBody });
+    } else {
+      segments.push({ title, number: extractChapterOrder(title), titleLine: lineIndex, from, to, volume, volumeStart: false, isChapter: true });
+    }
   });
   return segments;
 }
@@ -112,7 +168,7 @@ export function applyNumberFixesToText(text: string, options: SplitOptions, fixe
   const lines = text.split("\n");
   const segments = chapterSegments(lines, options);
   const order = applyNumberFixes(
-    segments.map((s, i) => ({ order: i, title: s.title, number: s.number })),
+    segments.map((s, i) => ({ order: i, title: s.title, number: s.number, volume: s.volume, volumeStart: s.volumeStart })),
     fixes,
   );
   return order.map((i) => lines.slice(segments[i]!.from, segments[i]!.to).join("\n")).join("\n");
@@ -123,8 +179,7 @@ export function applyNumberFixesToText(text: string, options: SplitOptions, fixe
  * 以及按全文统计出的章节单位（章/回/节…），因此无法作为正则交给所有者编辑。
  * 本书正则命中的行同样受标题长度上限约束，避免把正文中提到同一词语的长句当作标题。
  */
-function titleMatcher(lines: string[], options: SplitOptions): (line: string) => boolean {
-  const unit = detectChapterUnit(lines);
+function titleMatcher(lines: string[], options: SplitOptions, unit = detectChapterUnit(lines)): (line: string) => boolean {
   const builtin = (line: string) => isChapterTitleLine(line, unit);
   const custom = customTitleMatcher(options.chapterPattern);
   if (!custom) return builtin;

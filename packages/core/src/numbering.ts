@@ -4,6 +4,10 @@ export interface NumberedChapter {
   order: number;
   title: string;
   number: number | null;
+  /** 所属卷的标题。卷不同的章节分属不同的分卷，各自检查序号。 */
+  volume?: string | null;
+  /** 卷标题本身（不是章节）：固定不动，开始一个新的分卷。 */
+  volumeStart?: boolean;
 }
 
 /**
@@ -40,16 +44,20 @@ export function parseOutOfOrderKey(key: string): { section: number; number: numb
 }
 
 /**
- * 按序号重置把有序号的章节分成分卷：当前分卷已经有第 1 章，又遇到第 1 章且前一章序号大于 1。
- * 当前分卷还没有第 1 章时（如「第3章、第1章、第2章」），第 1 章只是乱序，不是新分卷。
+ * 把有序号的章节分成分卷。两种边界：
+ * - 卷：章节所属的卷与前一个有序号章节不同。卷标题已经说明了分卷，不算异常。
+ * - 序号重置：当前分卷已经有第 1 章，又遇到第 1 章且前一章序号大于 1；这是没有卷标题时推断出的分卷边界。
+ *   当前分卷还没有第 1 章时（如「第3章、第1章、第2章」），第 1 章只是乱序，不是新分卷。
  */
 function splitSections(numbered: Numbered[]): { sections: Numbered[][]; resets: { order: number; previous: number }[] } {
   const sections: Numbered[][] = [];
   const resets: { order: number; previous: number }[] = [];
   for (const chapter of numbered) {
-    if (startsSection(sections.at(-1), chapter)) {
-      const previous = sections.at(-1)!.at(-1)!;
-      resets.push({ order: chapter.order, previous: previous.number });
+    const previous = sections.at(-1)?.at(-1);
+    if (previous && (previous.volume ?? null) !== (chapter.volume ?? null)) {
+      sections.push([]);
+    } else if (startsSection(sections.at(-1), chapter)) {
+      resets.push({ order: chapter.order, previous: previous!.number });
       sections.push([]);
     }
     if (!sections.length) sections.push([]);
@@ -89,12 +97,11 @@ function misplaced(section: Numbered[]): Set<number> {
 export function findNumberAnomalies(chapters: readonly NumberedChapter[]): NumberAnomaly[] {
   const numbered = chapters.filter((c): c is Numbered => c.number !== null);
   const { sections, resets } = splitSections(numbered);
-  const anomalies: NumberAnomaly[] = resets.map((r, i) => ({
-    key: `sectionReset|${i + 1}`,
-    section: i + 1,
-    kind: "sectionReset",
-    ...r,
-  }));
+  const sectionOf = new Map(sections.flatMap((s, i) => s.map((c) => [c.order, i] as const)));
+  const anomalies: NumberAnomaly[] = resets.map((r) => {
+    const section = sectionOf.get(r.order)!;
+    return { key: `sectionReset|${section}`, section, kind: "sectionReset", ...r };
+  });
 
   sections.forEach((section, s) => {
     const byNumber = new Map<number, number[]>();
@@ -160,23 +167,22 @@ interface Group {
 
 /** 移动阅读顺序在 targets 中的章节组，返回新的章节序列（每项保留原 order）。 */
 function moveChapters(chapters: NumberedChapter[], targets: Set<number>): NumberedChapter[] {
-  // 分组：一个有序号的章节加上紧随其后的无序号章节；开头的无序号章节单独成组，不移动。
+  // 分组：一个有序号的章节加上紧随其后的无序号章节；开头的无序号章节与卷标题各自成组，不移动。
+  const { sections } = splitSections(chapters.filter((c): c is Numbered => c.number !== null));
+  const sectionOf = new Map(sections.flatMap((s, i) => s.map((c) => [c.order, i] as const)));
   const groups: Group[] = [];
-  let section = 0;
-  let current: NumberedChapter[] = [];
-  for (const c of chapters) {
-    if (c.number === null) {
+  chapters.forEach((c, i) => {
+    if (c.volumeStart) {
+      // 卷标题属于它后面第一个有序号章节所在的分卷，修复插入时不会越过它。
+      const next = chapters.slice(i + 1).find((n) => n.number !== null);
+      groups.push({ number: null, section: next ? sectionOf.get(next.order)! : sections.length, items: [c] });
+    } else if (c.number === null) {
       if (groups.length === 0) groups.push({ number: null, section: 0, items: [] });
       groups.at(-1)!.items.push(c);
-      continue;
+    } else {
+      groups.push({ number: c.number, section: sectionOf.get(c.order)!, items: [c] });
     }
-    if (startsSection(current, c)) {
-      section++;
-      current = [];
-    }
-    current.push(c);
-    groups.push({ number: c.number, section, items: [c] });
-  }
+  });
   const moving = groups.filter((g) => g.number !== null && targets.has(g.items[0]!.order));
   const result = groups.filter((g) => !moving.includes(g));
   // 序号小的先插入；序号相同的保持原来的先后。

@@ -37,6 +37,16 @@ describe("findNumberAnomalies", () => {
     expect(parseOutOfOrderKey("outOfOrder|2|7|第七章 a|b")).toEqual({ section: 2, number: 7, title: "第七章 a|b" });
     expect(parseOutOfOrderKey("missing|0|3|3")).toBeNull();
   });
+
+  it("按卷分别检查：卷内序号从 1 开始不算异常，也不是推断的分卷边界", () => {
+    const list = [
+      { order: 0, number: 1, title: "第一章", volume: "第一卷" },
+      { order: 1, number: 2, title: "第二章", volume: "第一卷" },
+      { order: 2, number: 1, title: "第一章", volume: "第二卷" },
+      { order: 3, number: 3, title: "第三章", volume: "第二卷" },
+    ];
+    expect(findNumberAnomalies(list)).toEqual([{ key: "missing|1|2|2", section: 1, kind: "missing", from: 2, to: 2, after: 2 }]);
+  });
 });
 
 describe("applyNumberFixes", () => {
@@ -59,6 +69,18 @@ describe("applyNumberFixes", () => {
   it("在分卷内移动，不跨分卷", () => {
     // 卷一：1 3 2；卷二：1 2
     const list = chapters([1, 3, 2, 1, 2]);
+    expect(applyNumberFixes(list, ["outOfOrder|0|3|第3章"])).toEqual([0, 2, 1, 3, 4]);
+  });
+
+  it("修复不越过卷标题", () => {
+    // 第一卷：卷标题 0、第3章 1、第1章 2；第二卷：卷标题 3、第1章 4
+    const list = [
+      { order: 0, number: null, title: "第一卷", volume: "第一卷", volumeStart: true },
+      { order: 1, number: 3, title: "第3章", volume: "第一卷" },
+      { order: 2, number: 1, title: "第1章", volume: "第一卷" },
+      { order: 3, number: null, title: "第二卷", volume: "第二卷", volumeStart: true },
+      { order: 4, number: 1, title: "第1章", volume: "第二卷" },
+    ];
     expect(applyNumberFixes(list, ["outOfOrder|0|3|第3章"])).toEqual([0, 2, 1, 3, 4]);
   });
 });

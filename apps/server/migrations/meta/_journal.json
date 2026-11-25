@@ -50,6 +50,13 @@
       "when": 1795571911772,
       "tag": "0006_book_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795573141425,
+      "tag": "0007_chapter_volume",
+      "breakpoints": true
     }
   ]
 }

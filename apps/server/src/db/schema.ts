@@ -72,6 +72,8 @@ export const chapters = sqliteTable(
     number: integer("number"),
     byteOffset: integer("byte_offset").notNull(),
     byteLength: integer("byte_length").notNull(),
+    // 所属卷名；没有卷时为 null。
+    volume: text("volume"),
   },
   (t) => [primaryKey({ columns: [t.versionId, t.ord] })],
 );

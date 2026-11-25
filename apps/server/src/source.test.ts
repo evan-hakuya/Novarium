@@ -57,6 +57,7 @@ function legadoClient(source: BookSource, fetchApi: (url: string, init?: Request
       return (jsonPath(res.body, source.ruleToc.chapterList!) as unknown[]).map((item) => ({
         name: jsonPath(item, source.ruleToc.chapterName!),
         url: new URL(jsonPath(item, source.ruleToc.chapterUrl!), tocUrl).toString(),
+        isVolume: jsonPath(item, source.ruleToc.isVolume!) === true,
       }));
     },
     async content(chapterUrl: string) {
@@ -109,6 +110,7 @@ describe("书源", () => {
     expect(info.name).toBe("归藏试读");
     const toc = await client.toc(info.tocUrl);
     expect(toc.map((ch) => ch.name)).toEqual(["第一章 开端", "第二章 归来"]);
+    expect(toc.some((ch) => ch.isVolume)).toBe(false);
     expect(await client.content(toc[1]!.url)).toBe("第二章 归来\n正文二，含中文与 emoji 🌙。\n");
 
     expect(client.requested).toHaveLength(4);
@@ -116,6 +118,27 @@ describe("书源", () => {
       expect(req.url.startsWith(ORIGIN)).toBe(true);
       expect(req.url).not.toContain("nvr_");
     }
+  });
+
+  it("目录在每卷第一章前插入卷条目", async () => {
+    await addBook(app.deps, "33333333-3333-4333-8333-333333333333", "分卷之书", "某人", [
+      ["第一章 起", "第一章 起\n甲\n", "第一卷 春"],
+      ["第二章 承", "第二章 承\n乙\n", "第一卷 春"],
+      ["第一章 转", "第一章 转\n丙\n", "第二卷 秋"],
+    ]);
+    const client = legadoClient((await createToken("平板")).bookSource, app.fetchApi);
+    const [book] = await client.search("分卷之书");
+    const toc = await client.toc((await client.bookInfo(book!.bookUrl)).tocUrl);
+    expect(toc.map((ch) => [ch.name, ch.isVolume])).toEqual([
+      ["第一卷 春", true],
+      ["第一章 起", false],
+      ["第二章 承", false],
+      ["第二卷 秋", true],
+      ["第一章 转", false],
+    ]);
+    expect(await client.content(toc[4]!.url)).toBe("第一章 转\n丙\n");
+    expect(new Set(toc.map((ch) => ch.url)).size).toBe(toc.length);
+    expect(await client.content(toc[0]!.url)).toBe("");
   });
 
   it("按作者搜索，并把 % 与 _ 当作普通字符", async () => {

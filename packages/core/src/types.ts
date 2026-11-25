@@ -7,6 +7,8 @@ export interface ChapterDraft {
   title: string;
   /** 章节序号；序章、番外这类没有编号的章节为 null。 */
   number: number | null;
+  /** 所属卷的标题；没有卷的书为 null。 */
+  volume: string | null;
   /** 正文（不含标题行）在整理后正文中的起始字节。 */
   byteOffset: number;
   /** 正文的字节长度；空章节为 0。 */

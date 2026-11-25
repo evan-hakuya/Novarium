@@ -6,10 +6,13 @@ export interface ChapterItem {
   order: number;
   title: string;
   byteLength: number;
+  /** 所属卷名；没有卷时为 null 或不提供。 */
+  volume?: string | null;
 }
 
 /**
  * 左侧章节列表、右侧章节正文。正文由调用方按章节渲染。
+ * 章节有所属卷时，列表在每卷第一章前显示不可点击的卷名。
  * 传入 selected 与 onSelect 时由调用方控制当前章节；flagged 中的章节在列表中标出。
  */
 export function ChapterBrowser({
@@ -45,8 +48,17 @@ export function ChapterBrowser({
   return (
     <div className="grid h-[70svh] grid-cols-[minmax(10rem,16rem)_1fr] overflow-hidden rounded-xl border">
       <ol ref={listRef} className="overflow-y-auto border-r py-2 text-sm">
-        {chapters.map((c) => (
+        {chapters.map((c, i) => (
           <li key={c.order}>
+            {c.volume && c.volume !== chapters[i - 1]?.volume && (
+              <div
+                role="heading"
+                aria-level={3}
+                className="px-3 pt-3 pb-1 text-xs font-semibold text-muted-foreground"
+              >
+                {c.volume}
+              </div>
+            )}
             <button
               type="button"
               data-order={c.order}

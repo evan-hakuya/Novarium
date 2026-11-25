@@ -56,4 +56,14 @@ describe("processManuscript", () => {
     });
     expect(chapters.map((c) => c.title)).toEqual(["第一章 开始", "个人番外篇 : 甲：与你相配"]);
   });
+
+  it("整理后识别卷，卷首语不与卷标题合并", async () => {
+    const raw = "卷一 风起\n本卷讲的是风起\n第一章 甲\n甲正文。\n卷二 云涌\n第一章 乙\n乙正文。";
+    const { chapters } = await processManuscript(new TextEncoder().encode(raw), DEFAULT_PROCESS_OPTIONS);
+    expect(chapters.map((c) => [c.title, c.number, c.volume])).toEqual([
+      ["卷一 风起", null, "卷一 风起"],
+      ["第一章 甲", 1, "卷一 风起"],
+      ["第一章 乙", 1, "卷二 云涌"],
+    ]);
+  });
 });
