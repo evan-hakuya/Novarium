@@ -56,6 +56,7 @@ AI 复核（见 GLOSSARY「AI 复核」、ADR 0007）用到的 Cloudflare Worker
 ```
 
 - 回答在 `result.answers.<字段>.value`，另有 `confidence`、`p_null`。每次调用约 4 秒。
+- 接口 `POST /api/admin/ai/metadata`（`apps/server/src/ai-metadata.ts`）：请求 `{fileName, head}`，`head` 由 core 的 `manuscriptHead` 取原稿开头 3,000 字。返回 `{suggestion: {title, author, intro}}`，空值、超长值为 null，简介去掉每行缩进。
 
 ## 实测（2026-11-25）
 

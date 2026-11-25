@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { getCookie } from "hono/cookie";
 import type { AiClient } from "./ai";
 import { createAiRoutes } from "./ai-routes";
+import { createAiMetadataRoutes } from "./ai-metadata";
 import {
   SESSION_COOKIE,
   clearSessionCookie,
@@ -102,6 +103,7 @@ export function createApi(getDeps: (c: { env: unknown }) => AppDeps) {
   api.route("/admin", createTokenRoutes());
   api.route("/admin", createSettingsRoutes());
   api.route("/admin", createAiRoutes());
+  api.route("/admin", createAiMetadataRoutes());
 
   // 阅读客户端用的书源 API，凭访问令牌访问。
   const sourcePath = SOURCE_BASE.slice("/api".length);

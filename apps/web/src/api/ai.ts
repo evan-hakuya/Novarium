@@ -21,6 +21,20 @@ export const saveAiEnabled = (enabled: boolean) =>
 
 export const checkAi = () => request<{ ok: true; mode: AiStatus["mode"] }>("/api/admin/settings/ai/check", { method: "POST" });
 
+/** AI 识别元数据的结果。null 表示 AI 没有给出建议。 */
+export interface MetadataSuggestion {
+  title: string | null;
+  author: string | null;
+  intro: string | null;
+}
+
+export const suggestMetadata = (fileName: string, head: string) =>
+  request<{ suggestion: MetadataSuggestion }>("/api/admin/ai/metadata", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ fileName, head }),
+  }).then((r) => r.suggestion);
+
 /** 整理页用：AI 已配置且已开启时才显示 AI 按钮。 */
 export function useAiAvailable(): boolean {
   const status = useQuery({ queryKey: aiStatusQueryKey, queryFn: fetchAiStatus, staleTime: 60_000 });

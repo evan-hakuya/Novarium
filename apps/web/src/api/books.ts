@@ -94,6 +94,7 @@ export const deleteBook = (id: string) => request<{ deleted: true }>(`/api/admin
 export interface NewBook {
   title: string;
   author: string;
+  intro: string;
   original: File;
   text: Uint8Array;
   chapters: ChapterDraft[];
@@ -176,6 +177,7 @@ export async function importBook(book: NewBook, onStep?: (step: "original" | "te
       versionId,
       title: book.title,
       author: book.author,
+      intro: book.intro,
       originalName: book.original.name,
       options: book.options,
       chapters: book.chapters,
