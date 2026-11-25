@@ -12,11 +12,13 @@ import {
   type DuplicateBook,
 } from "@/api/books";
 import { fetchDefaultProcessOptions, processOptionsQueryKey } from "@/api/settings";
+import { SuggestionLine, useAiMetadata } from "@/components/ai-metadata";
 import { OptionsPanel } from "@/components/options-panel";
 import { PreviewBrowser } from "@/components/preview-browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { guessBookName } from "@/lib/book-name";
 import { countPending, reviewNumbers } from "@/lib/number-review";
 import { useProcessPreview } from "@/lib/use-process-preview";
@@ -36,6 +38,8 @@ export function ImportPage() {
   const [uploadStep, setUploadStep] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [intro, setIntro] = useState("");
+  const ai = useAiMetadata(source);
   // 书库中同名同作者的书；不为 null 时等待所有者选择导入方式。
   const [duplicates, setDuplicates] = useState<DuplicateBook[] | null>(null);
 
@@ -51,6 +55,7 @@ export function ImportPage() {
     const guess = guessBookName(file.name);
     setTitle(guess.title);
     setAuthor(guess.author);
+    setIntro("");
     try {
       const defaults = await queryClient.fetchQuery({
         queryKey: processOptionsQueryKey,
@@ -86,7 +91,7 @@ export function ImportPage() {
     setError(null);
     try {
       const id = await importBook(
-        { title, author, original: source.file, text: version.text, chapters: version.chapters, options: used },
+        { title, author, intro, original: source.file, text: version.text, chapters: version.chapters, options: used },
         (step) => setUploadStep(stepText[step]),
       );
       await queryClient.invalidateQueries({ queryKey: booksQueryKey });
@@ -124,6 +129,18 @@ export function ImportPage() {
   const busy = processing || uploading;
   const version = preview?.version;
   const pending = useMemo(() => (preview ? countPending(reviewNumbers(preview.version.chapters, preview.options)) : 0), [preview]);
+  const suggestion = ai.suggestion;
+  const adoptAll = () => {
+    if (!suggestion) return;
+    if (suggestion.title) setTitle(suggestion.title);
+    if (suggestion.author) setAuthor(suggestion.author);
+    if (suggestion.intro) setIntro(suggestion.intro);
+  };
+  const hasNewSuggestion =
+    !!suggestion &&
+    ((!!suggestion.title && suggestion.title !== title.trim()) ||
+      (!!suggestion.author && suggestion.author !== author.trim()) ||
+      (!!suggestion.intro && suggestion.intro !== intro.trim()));
 
   return (
     <div className="flex flex-col gap-4">
@@ -151,14 +168,35 @@ export function ImportPage() {
 
       {version && (
         <>
+          {ai.available && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Button size="sm" variant="outline" disabled={busy || ai.pending} onClick={ai.run}>
+                {ai.pending ? "AI 识别中…" : "AI 识别元数据"}
+              </Button>
+              {hasNewSuggestion && (
+                <Button size="sm" variant="ghost" disabled={uploading} onClick={adoptAll}>
+                  全部采用
+                </Button>
+              )}
+              {ai.empty && <span className="text-muted-foreground">AI 没有在原稿开头找到书名、作者或简介。</span>}
+              {ai.error && <span className="text-destructive">{ai.error}</span>}
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="title">书名</Label>
               <Input id="title" value={title} disabled={uploading} onChange={(e) => setTitle(e.target.value)} />
+              <SuggestionLine value={suggestion?.title ?? null} current={title} onAdopt={() => suggestion?.title && setTitle(suggestion.title)} />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="author">作者</Label>
               <Input id="author" value={author} disabled={uploading} onChange={(e) => setAuthor(e.target.value)} />
+              <SuggestionLine value={suggestion?.author ?? null} current={author} onAdopt={() => suggestion?.author && setAuthor(suggestion.author)} />
+            </div>
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <Label htmlFor="intro">简介</Label>
+              <Textarea id="intro" rows={3} value={intro} disabled={uploading} onChange={(e) => setIntro(e.target.value)} />
+              <SuggestionLine value={suggestion?.intro ?? null} current={intro} onAdopt={() => suggestion?.intro && setIntro(suggestion.intro)} />
             </div>
           </div>
           <div className="flex items-center justify-between text-sm text-muted-foreground">

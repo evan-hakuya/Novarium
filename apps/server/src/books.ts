@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { parseProcessOptions, validateChapterIndex } from "@novarium/core/validate";
 import type { AppDeps } from "./app";
 import { books, chapters, pendingUploads, versions } from "./db/schema";
-import { deleteStaleFiles, getTags, staleFileEntries } from "./metadata";
+import { deleteStaleFiles, getTags, MAX_INTRO_LENGTH, staleFileEntries } from "./metadata";
 import { currentOriginalKey, isUuid, originalKey, replacementOriginalKey, versionTextKey } from "./storage/keys";
 
 /** 单个上传文件（原稿或版本正文）的上限。 */
@@ -71,12 +71,13 @@ export function createBookRoutes() {
     const { db, storage, batch } = c.get("deps");
     const body = (await c.req.json().catch(() => null)) as CreateBookBody | null;
     if (!body || typeof body !== "object") return c.json({ error: "invalid_body" }, 400);
-    const { id, versionId, title, author = "", originalName, options } = body;
+    const { id, versionId, title, author = "", intro = "", originalName, options } = body;
     if (typeof id !== "string" || !isUuid(id) || typeof versionId !== "string" || !isUuid(versionId)) {
       return c.json({ error: "invalid_id" }, 400);
     }
     if (typeof title !== "string" || !title.trim() || title.length > 200) return c.json({ error: "invalid_title" }, 400);
     if (typeof author !== "string" || author.length > 100) return c.json({ error: "invalid_author" }, 400);
+    if (typeof intro !== "string" || intro.length > MAX_INTRO_LENGTH) return c.json({ error: "invalid_intro" }, 400);
     if (typeof originalName !== "string" || originalName.length > 255) return c.json({ error: "invalid_original_name" }, 400);
     const parsedOptions = parseProcessOptions(options);
     if (!parsedOptions.ok) return c.json({ error: "invalid_options", details: [parsedOptions.error] }, 400);
@@ -108,6 +109,7 @@ export function createBookRoutes() {
         id,
         title: title.trim(),
         author: author.trim(),
+        intro: intro.trim(),
         originalName,
         originalSize,
         currentVersionId: versionId,
@@ -262,6 +264,7 @@ interface CreateBookBody {
   versionId?: unknown;
   title?: unknown;
   author?: unknown;
+  intro?: unknown;
   originalName?: unknown;
   options?: unknown;
   chapters?: unknown;
