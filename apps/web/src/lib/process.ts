@@ -1,10 +1,12 @@
-import type { ChapterDraft, ProcessOptions } from "@novarium/core";
+import type { CandidateLine, ChapterDraft, ProcessOptions } from "@novarium/core";
 import type { ProcessRequest, ProcessResponse } from "@/workers/process.worker";
 
 export interface ProcessedVersion {
   /** 整理后正文的 UTF-8 字节，即版本文件内容。 */
   text: Uint8Array;
   chapters: ChapterDraft[];
+  /** AI 复核的候选行。 */
+  candidates: CandidateLine[];
 }
 
 /** 在新的 Web Worker 中整理一份原稿。每次调用用一个独立的 Worker，完成后结束它。 */
@@ -13,7 +15,7 @@ export function processInWorker(bytes: ArrayBuffer, options: ProcessOptions): Pr
   return new Promise<ProcessedVersion>((resolve, reject) => {
     worker.onmessage = (event: MessageEvent<ProcessResponse>) => {
       const data = event.data;
-      if (data.ok) resolve({ text: new Uint8Array(data.text), chapters: data.chapters });
+      if (data.ok) resolve({ text: new Uint8Array(data.text), chapters: data.chapters, candidates: data.candidates });
       else reject(new Error(data.error));
     };
     worker.onerror = (event) => reject(new Error(event.message || "worker failed"));

@@ -1,6 +1,7 @@
 import { extractChapterOrder } from "./vendor/novel-processor/novel";
 import { CHAPTER_TITLE_MAX_LEN, detectChapterUnit, isChapterTitleLine } from "./vendor/novel-processor/regex";
 import { applyNumberFixes } from "./numbering";
+import { candidateLines, lineIds, lineOverrideMap, type CandidateLine } from "./line-review";
 import type { ChapterDraft } from "./types";
 
 export type { ChapterDraft };
@@ -13,6 +14,8 @@ export interface SplitOptions {
   chapterPattern: string | null;
   /** 缺省为 extend。 */
   chapterPatternMode?: ChapterPatternMode;
+  /** AI 复核得出的行级修正，优先于规则（见 line-review.ts）。 */
+  lineOverrides?: readonly string[];
 }
 
 /** 第一个章节标题之前有正文时，这段正文作为一个章节，使用此标题。 */
@@ -126,16 +129,38 @@ export const isVolumeTitleLine = volumeMatcher(null);
  * 按章节标题与卷标题把正文的行分段。卷标题之后的章节都属于这一卷，直到下一个卷标题。
  * 卷标题与第一章之间有正文时（如卷首语），这段正文作为一个以卷标题为标题的章节。
  */
-function chapterSegments(lines: string[], options: SplitOptions): Segment[] {
+/** 只按规则（不含行级修正）判断的标题行：行下标 → 章节或卷。 */
+function ruleTitleLines(lines: string[], options: SplitOptions): Map<number, "chapter" | "volume"> {
   const unit = detectChapterUnit(lines);
   const isTitle = titleMatcher(lines, options, unit);
   // 只用本书正则时，所有者完全接管标题识别，不再识别卷。
   const isVolume = options.chapterPatternMode === "replace" && options.chapterPattern ? () => false : volumeMatcher(unit);
-  const titleLines: { line: number; volume: boolean }[] = [];
+  const kinds = new Map<number, "chapter" | "volume">();
   lines.forEach((line, i) => {
-    if (isVolume(line)) titleLines.push({ line: i, volume: true });
-    else if (isTitle(line)) titleLines.push({ line: i, volume: false });
+    if (isVolume(line)) kinds.set(i, "volume");
+    else if (isTitle(line)) kinds.set(i, "chapter");
   });
+  return kinds;
+}
+
+/** 整理后正文中交给 AI 复核的候选行（GLOSSARY「候选行」）。 */
+export function findCandidateLines(text: string, options: SplitOptions): CandidateLine[] {
+  const lines = text.split("\n");
+  return candidateLines(lines, ruleTitleLines(lines, options));
+}
+
+function chapterSegments(lines: string[], options: SplitOptions): Segment[] {
+  const kinds = ruleTitleLines(lines, options);
+  // 行级修正优先于规则：可以把正文行设为章节或卷，也可以把标题行设为正文。
+  const overrides = lineOverrideMap(options.lineOverrides);
+  if (overrides.size > 0) {
+    lineIds(lines).forEach((id, i) => {
+      const kind = id ? overrides.get(id) : undefined;
+      if (kind === "body") kinds.delete(i);
+      else if (kind) kinds.set(i, kind);
+    });
+  }
+  const titleLines = [...kinds].sort((a, b) => a[0] - b[0]).map(([line, kind]) => ({ line, volume: kind === "volume" }));
   if (titleLines.length === 0) {
     return [
       { title: WHOLE_BOOK_TITLE, number: null, titleLine: null, from: 0, to: lines.length, volume: null, volumeStart: false, isChapter: true },

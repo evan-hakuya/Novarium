@@ -2,6 +2,7 @@ import type { ChapterDraft } from "./types";
 
 // 服务端只依赖这个入口：整理选项的校验也从这里导出。
 export { parseProcessOptions, DEFAULT_PROCESS_OPTIONS, type ProcessOptions } from "./options";
+export { AI_LINE_BATCH_SIZE, type LineKind } from "./line-review";
 
 /** 一个版本最多允许的章节数，防止异常输入拖垮数据库。 */
 export const MAX_CHAPTERS = 20_000;

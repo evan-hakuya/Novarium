@@ -16,7 +16,14 @@ export async function getDefaultProcessOptions(db: AppDeps["db"]): Promise<Proce
   return parsed?.ok ? { ...parsed.options, ...BOOK_ONLY } : { ...DEFAULT_PROCESS_OPTIONS };
 }
 
-const BOOK_ONLY = { chapterPattern: null, chapterPatternMode: "extend" as const, numberFixes: [], numberIgnores: [] };
+const BOOK_ONLY = {
+  chapterPattern: null,
+  chapterPatternMode: "extend" as const,
+  numberFixes: [],
+  numberIgnores: [],
+  lineOverrides: [],
+  lineIgnores: [],
+};
 
 // 书库设置。挂在 /api/admin 下，受 session 保护。
 export function createSettingsRoutes() {
