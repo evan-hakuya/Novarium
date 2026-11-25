@@ -17,11 +17,46 @@ const SEARCH_PAGE_SIZE = 20;
 
 const bookUrl = (id: string) => `${SOURCE_BASE}/books/${id}`;
 
+/** 书库中用到的全部标签，按名称排序。生成书源时用来列出发现页入口。 */
+export async function listTags(db: AppDeps["db"]): Promise<string[]> {
+  const rows = await db.selectDistinct({ tag: bookTags.tag }).from(bookTags).orderBy(bookTags.tag);
+  return rows.map((r) => r.tag);
+}
+
+/**
+ * 发现页入口：「全部」加上每个标签一个入口。入口在生成书源时固定，
+ * 标签有变化时重新导入书源即可更新。
+ */
+function exploreEntries(tags: string[]) {
+  const url = (tag: string) => `${SOURCE_BASE}/explore?tag=${encodeURIComponent(tag)}&page={{page}}`;
+  return [{ title: "全部", url: url("") }, ...tags.map((tag) => ({ title: tag, url: url(tag) }))];
+}
+
 /**
  * 为一个访问令牌生成 Legado 书源。访问令牌放在 `header` 中，
  * Legado 会把它附加到这个书源发出的每个请求（搜索、详情、目录、正文）。
  */
-export function buildBookSource({ origin, token, name }: { origin: string; token: string; name: string }) {
+export function buildBookSource({
+  origin,
+  token,
+  name,
+  tags,
+}: {
+  origin: string;
+  token: string;
+  name: string;
+  tags: string[];
+}) {
+  const bookListRule = {
+    bookList: "$.books[*]",
+    name: "$.title",
+    author: "$.author",
+    kind: "$.kind",
+    intro: "$.intro",
+    lastChapter: "$.lastChapter",
+    coverUrl: "$.coverUrl",
+    bookUrl: "$.url",
+  };
   return {
     bookSourceUrl: origin,
     bookSourceName: `Novarium 归藏（${name}）`,
@@ -29,23 +64,16 @@ export function buildBookSource({ origin, token, name }: { origin: string; token
     bookSourceType: 0,
     bookSourceComment: "Novarium 归藏书库。访问令牌在请求头中，请勿分享这份书源。",
     enabled: true,
-    enabledExplore: false,
+    enabledExplore: true,
     enabledCookieJar: false,
     header: JSON.stringify({ Authorization: `Bearer ${token}` }),
     lastUpdateTime: Date.now(),
     weight: 0,
     customOrder: 0,
     searchUrl: `${SOURCE_BASE}/search?q={{key}}&page={{page}}`,
-    ruleSearch: {
-      bookList: "$.books[*]",
-      name: "$.title",
-      author: "$.author",
-      kind: "$.kind",
-      intro: "$.intro",
-      lastChapter: "$.lastChapter",
-      coverUrl: "$.coverUrl",
-      bookUrl: "$.url",
-    },
+    ruleSearch: bookListRule,
+    exploreUrl: JSON.stringify(exploreEntries(tags)),
+    ruleExplore: bookListRule,
     ruleBookInfo: {
       name: "$.title",
       author: "$.author",
@@ -125,6 +153,23 @@ export function createSourceRoutes() {
       .innerJoin(versions, eq(versions.id, books.currentVersionId))
       .where(or(sql`${books.title} like ${pattern} escape '\\'`, sql`${books.author} like ${pattern} escape '\\'`))
       .orderBy(desc(books.createdAt))
+      .limit(SEARCH_PAGE_SIZE)
+      .offset((page - 1) * SEARCH_PAGE_SIZE);
+    return c.json({ books: rows.map(toSummary) });
+  });
+
+  // 发现页：列出带某个标签的书；tag 为空时列出全部书。新导入的书在前。
+  app.get("/explore", async (c) => {
+    const { db } = c.get("deps");
+    const tag = (c.req.query("tag") ?? "").trim();
+    const page = Math.max(1, Math.floor(Number(c.req.query("page")) || 1));
+    const hasTag = sql`exists (select 1 from ${bookTags} where ${bookTags.bookId} = ${books.id} and ${bookTags.tag} = ${tag})`;
+    const rows = await db
+      .select(summaryFields)
+      .from(books)
+      .innerJoin(versions, eq(versions.id, books.currentVersionId))
+      .where(tag ? hasTag : undefined)
+      .orderBy(desc(books.createdAt), books.id)
       .limit(SEARCH_PAGE_SIZE)
       .offset((page - 1) * SEARCH_PAGE_SIZE);
     return c.json({ books: rows.map(toSummary) });

@@ -2,7 +2,7 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { desc, eq, sql } from "drizzle-orm";
 import type { AppDeps } from "./app";
 import { accessTokens } from "./db/schema";
-import { buildBookSource, IMPORT_BASE } from "./source";
+import { buildBookSource, IMPORT_BASE, listTags } from "./source";
 
 type Env = { Variables: { deps: AppDeps } };
 
@@ -31,10 +31,10 @@ export function publicOrigin(c: Context): string {
 }
 
 /** 一个访问令牌的书源：书源 JSON 与网络导入地址。 */
-function bookSourceFor(c: Context, token: string, name: string) {
+async function bookSourceFor(c: Context<Env>, token: string, name: string) {
   const origin = publicOrigin(c);
   return {
-    bookSource: buildBookSource({ origin, token, name }),
+    bookSource: buildBookSource({ origin, token, name, tags: await listTags(c.get("deps").db) }),
     importUrl: `${origin}${IMPORT_BASE}/${token}`,
   };
 }
@@ -93,7 +93,7 @@ export function createTokenRoutes() {
     return c.json(
       {
         token: { id: row.id, name, createdAt: row.createdAt, lastUsedAt: null, revokedAt: null, viewable: true },
-        ...bookSourceFor(c, token, name),
+        ...(await bookSourceFor(c, token, name)),
       },
       201,
     );
@@ -105,7 +105,7 @@ export function createTokenRoutes() {
     if (!row) return c.json({ error: "not_found" }, 404);
     if (row.revokedAt) return c.json({ error: "token_revoked" }, 409);
     if (!row.token) return c.json({ error: "token_not_viewable" }, 409);
-    return c.json(bookSourceFor(c, row.token, row.name));
+    return c.json(await bookSourceFor(c, row.token, row.name));
   });
 
   app.post("/tokens/:id/revoke", async (c) => {
@@ -146,7 +146,7 @@ export function createImportRoutes() {
     const row = await findActiveToken(c.get("deps").db, token);
     if (!row) return c.json({ error: "not_found" }, 404);
     c.header("cache-control", "no-store");
-    return c.json([bookSourceFor(c, token, row.name).bookSource]);
+    return c.json([(await bookSourceFor(c, token, row.name)).bookSource]);
   });
   return app;
 }
