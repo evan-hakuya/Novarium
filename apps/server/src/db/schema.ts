@@ -87,3 +87,17 @@ export const pendingUploads = sqliteTable(
   },
   (t) => [index("pending_uploads_created_at_idx").on(t.createdAt)],
 );
+
+// 登录失败记录，用于限制登录尝试次数（见 login-limit.ts）。移出时间窗口的记录在下次登录失败时删除。
+export const loginFailures = sqliteTable(
+  "login_failures",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    ip: text("ip").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    index("login_failures_ip_created_at_idx").on(t.ip, t.createdAt),
+    index("login_failures_created_at_idx").on(t.createdAt),
+  ],
+);

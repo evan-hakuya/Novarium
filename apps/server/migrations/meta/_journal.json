@@ -57,6 +57,13 @@
       "when": 1795573141425,
       "tag": "0007_chapter_volume",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795580099246,
+      "tag": "0008_login_failures",
+      "breakpoints": true
     }
   ]
 }

@@ -46,7 +46,14 @@ docker compose up -d
 
 升级：`docker compose pull && docker compose up -d`。
 
-放在反向代理后面时，代理需要传递 `X-Forwarded-Proto` 与 `X-Forwarded-Host`，书源中的地址才会是外部地址。
+放在反向代理后面时：
+
+- 代理需要传递 `X-Forwarded-Proto` 与 `X-Forwarded-Host`，书源中的地址才会是外部地址。
+- 设置环境变量 `TRUST_PROXY=true`，并让代理把客户端地址追加到 `X-Forwarded-For`。登录失败次数按来源 IP 限制；不设置时，所有请求都算作代理的 IP。没有反向代理时不要设置，否则客户端可以伪造来源 IP。
+
+## 登录保护
+
+同一来源 IP 在 15 分钟内登录失败 5 次后，这个 IP 要等到窗口结束才能再登录（密码正确也不行）。全书库在 15 分钟内失败 50 次后，所有登录暂停到窗口结束。登录页会显示还需等待多久。
 
 ## 数据库迁移与发布顺序
 
