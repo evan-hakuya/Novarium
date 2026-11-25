@@ -28,10 +28,25 @@ export const books = sqliteTable("books", {
   originalSize: integer("original_size").notNull(),
   /** 原稿在存储中的键名。为空时是导入时的 books/{id}/original；以新版本替换原稿后指向新文件。 */
   originalKey: text("original_key"),
+  /** 简介，所有者编辑；空字符串表示没有简介。 */
+  intro: text("intro").notNull().default(""),
+  /** 封面在存储中的键名与图片类型；没有封面时为空。每次上传换一个键，旧键随后删除。 */
+  coverKey: text("cover_key"),
+  coverType: text("cover_type"),
   currentVersionId: text("current_version_id").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+// 书的标签。tag 保存所有者输入的文本，(book_id, tag) 唯一。
+export const bookTags = sqliteTable(
+  "book_tags",
+  {
+    bookId: text("book_id").notNull(),
+    tag: text("tag").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.bookId, t.tag] }), index("book_tags_tag_idx").on(t.tag)],
+);
 
 // 版本：一本书整理后的正文及其章节索引。options 记录生成它的整理选项。
 export const versions = sqliteTable(

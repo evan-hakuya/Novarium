@@ -3,6 +3,7 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ProcessOptions } from "@novarium/core";
 import { describeError, fetchBook, fetchChapter, formatBytes } from "@/api/books";
 import { ChapterBrowser, ChapterText } from "@/components/chapter-browser";
+import { BookMetadataPanel } from "@/components/book-metadata";
 import { STEPS } from "@/components/process-options-form";
 import { Button } from "@/components/ui/button";
 
@@ -35,6 +36,7 @@ export function BookPage() {
           </Link>
         </Button>
       </div>
+      <BookMetadataPanel key={`${book.id}:${book.title}:${book.coverKey}`} book={book} />
       <ChapterBrowser chapters={chapters} renderContent={(c) => <RemoteChapter bookId={bookId} order={c.order} />} />
     </div>
   );

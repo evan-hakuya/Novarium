@@ -43,6 +43,13 @@
       "when": 1795514885675,
       "tag": "0005_book_original_key",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795571911772,
+      "tag": "0006_book_metadata",
+      "breakpoints": true
     }
   ]
 }

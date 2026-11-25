@@ -10,10 +10,20 @@ export interface BookSummary {
   chapterCount: number;
   textSize: number;
   createdAt: string;
+  coverKey: string | null;
 }
 
 export interface BookDetail {
-  book: { id: string; title: string; author: string; originalName: string; originalSize: number };
+  book: {
+    id: string;
+    title: string;
+    author: string;
+    intro: string;
+    tags: string[];
+    coverKey: string | null;
+    originalName: string;
+    originalSize: number;
+  };
   /** 当前版本。options 是生成它的整理选项。 */
   version: { id: string; options: ProcessOptions; createdAt: string };
   chapters: { order: number; title: string; number: number | null; byteLength: number }[];
@@ -50,6 +60,33 @@ export const fetchBooks = () => request<{ books: BookSummary[] }>("/api/admin/bo
 export const fetchBook = (id: string) => request<BookDetail>(`/api/admin/books/${id}`);
 export const fetchChapter = (id: string, order: number) =>
   request<ChapterContent>(`/api/admin/books/${id}/chapters/${order}`);
+
+/** 封面图片地址；键名放进地址，换封面后浏览器不会显示缓存的旧图。 */
+export const coverUrl = (book: { id: string; coverKey: string | null }) =>
+  book.coverKey ? `/api/admin/books/${book.id}/cover?v=${book.coverKey.split("/").pop()}` : null;
+
+export const MAX_COVER_BYTES = 5 * 1024 * 1024;
+
+export interface BookMetadata {
+  title: string;
+  author: string;
+  intro: string;
+  tags: string[];
+}
+
+export const updateBook = (id: string, metadata: BookMetadata) =>
+  request<{ ok: true }>(`/api/admin/books/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(metadata),
+  });
+
+export const uploadCover = (id: string, file: File) =>
+  request<{ coverKey: string }>(`/api/admin/books/${id}/cover`, { method: "PUT", body: file });
+
+export const removeCover = (id: string) => request<{ ok: true }>(`/api/admin/books/${id}/cover`, { method: "DELETE" });
+
+export const deleteBook = (id: string) => request<{ deleted: true }>(`/api/admin/books/${id}`, { method: "DELETE" });
 
 export interface NewBook {
   title: string;
@@ -151,6 +188,11 @@ const errorText: Record<string, string> = {
   invalid_chapter_index: "章节索引没有通过服务端校验。",
   book_exists: "这本书已经存在。",
   invalid_title: "书名不能为空，且不能超过 200 字。",
+  invalid_author: "作者不能超过 100 字。",
+  invalid_intro: "简介不能超过 5000 字。",
+  invalid_tags: "最多 20 个标签，每个不超过 20 字。",
+  unsupported_image: "封面只支持 JPEG、PNG、GIF 或 WebP 图片。",
+  cover_too_large: "封面不能超过 5 MB。",
   invalid_name: "名称不能为空，且不能超过 50 字。",
   token_revoked: "这个访问令牌已撤销。",
   token_not_viewable: "这个访问令牌创建时没有保存明文，无法再次查看书源。",

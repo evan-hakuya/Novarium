@@ -4,6 +4,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { parseProcessOptions, validateChapterIndex } from "@novarium/core/validate";
 import type { AppDeps } from "./app";
 import { books, chapters, pendingUploads, versions } from "./db/schema";
+import { deleteStaleFiles, getTags, staleFileEntries } from "./metadata";
 import { currentOriginalKey, isUuid, originalKey, replacementOriginalKey, versionTextKey } from "./storage/keys";
 
 /** 单个上传文件（原稿或版本正文）的上限。 */
@@ -125,6 +126,7 @@ export function createBookRoutes() {
         id: books.id,
         title: books.title,
         author: books.author,
+        coverKey: books.coverKey,
         chapterCount: versions.chapterCount,
         textSize: versions.textSize,
         createdAt: books.createdAt,
@@ -151,7 +153,7 @@ export function createBookRoutes() {
       .from(chapters)
       .where(eq(chapters.versionId, row.version.id))
       .orderBy(chapters.ord);
-    return c.json({ book: row.book, version: row.version, chapters: list });
+    return c.json({ book: { ...row.book, tags: await getTags(db, bookId) }, version: row.version, chapters: list });
   });
 
   // 原稿下载，重新整理时浏览器从这里取回原稿。
@@ -233,20 +235,9 @@ export function createBookRoutes() {
       db.delete(chapters).where(eq(chapters.versionId, oldVersionId)),
       db.delete(versions).where(eq(versions.id, oldVersionId)),
       db.delete(pendingUploads).where(inArray(pendingUploads.key, newOriginal ? [newKey, newOriginal.key] : [newKey])),
-      // 立即视为过期，下次定时清理就会处理。
-      db
-        .insert(pendingUploads)
-        .values(staleKeys.map((key) => ({ key, createdAt: new Date(0) })))
-        .onConflictDoUpdate({ target: pendingUploads.key, set: { createdAt: new Date(0) } }),
+      ...staleFileEntries(db, staleKeys),
     ]);
-    for (const key of staleKeys) {
-      try {
-        await storage.delete(key);
-        await db.delete(pendingUploads).where(eq(pendingUploads.key, key));
-      } catch (error) {
-        console.error(JSON.stringify({ message: "stale file delete failed", key, error: String(error) }));
-      }
-    }
+    await deleteStaleFiles(c.get("deps"), staleKeys);
     return c.json({ versionId }, 201);
   });
 
