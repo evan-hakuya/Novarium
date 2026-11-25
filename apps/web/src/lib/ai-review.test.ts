@@ -83,4 +83,10 @@ describe("AI 复核条目", () => {
     const order = unjudgedCandidates(candidates, options, new Map([["0|第一章 开端", { kind: "chapter", confidence: 1 }]]));
     expect(order.map((c) => c.text)).toEqual(["请假条", "第二章 继续"]);
   });
+
+  it("只复核可疑行时跳过不可疑的行；复核全部时先发可疑行", () => {
+    const marked = setup(base, {}).candidates.map((c) => ({ ...c, suspicious: c.text !== "第二章 继续" && c.text !== "请假条" }));
+    expect(unjudgedCandidates(marked, base, new Map(), "suspicious").map((c) => c.text)).toEqual(["番外篇", "第一章 开端"]);
+    expect(unjudgedCandidates(marked, base, new Map(), "all").map((c) => c.text)).toEqual(["番外篇", "第一章 开端", "请假条", "第二章 继续"]);
+  });
 });

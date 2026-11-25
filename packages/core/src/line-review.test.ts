@@ -60,6 +60,29 @@ describe("候选行", () => {
     const first = findCandidateLines(text, { chapterPattern: null })[0]!;
     expect(first).toMatchObject({ prev: "", next: "　　他推开门。", byteOffset: 0 });
   });
+
+  it("可疑行：优先行、序号异常、正文很短、含公告用词；编号连续且正文正常的标题不可疑", () => {
+    const long = `　　${"夜色渐深，城门外只剩下几盏灯笼。".repeat(40)}`;
+    const book = [
+      "第一章 开端", long,
+      "第二章 继续", long,
+      "第三章 请假一天", long,
+      "第四章 短章", "　　很短。",
+      "第六章 跳号", long,
+      "第七章 结尾", long,
+      "番外 后日谈", long,
+    ].join("\n");
+    const marked = findCandidateLines(book, { chapterPattern: null }).map((c) => [c.text, c.suspicious]);
+    expect(marked).toEqual([
+      ["第一章 开端", false],
+      ["第二章 继续", false],
+      ["第三章 请假一天", true],
+      ["第四章 短章", true],
+      ["第六章 跳号", true],
+      ["第七章 结尾", false],
+      ["番外 后日谈", true],
+    ]);
+  });
 });
 
 describe("分章应用行级修正", () => {

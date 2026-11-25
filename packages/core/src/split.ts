@@ -1,7 +1,7 @@
 import { extractChapterOrder } from "./vendor/novel-processor/novel";
 import { CHAPTER_TITLE_MAX_LEN, detectChapterUnit, isChapterTitleLine } from "./vendor/novel-processor/regex";
-import { applyNumberFixes } from "./numbering";
-import { candidateLines, lineIds, lineOverrideMap, type CandidateLine } from "./line-review";
+import { applyNumberFixes, findNumberAnomalies } from "./numbering";
+import { candidateLines, lineIds, lineOverrideMap, markSuspicious, type CandidateLine } from "./line-review";
 import type { ChapterDraft } from "./types";
 
 export type { ChapterDraft };
@@ -143,10 +143,29 @@ function ruleTitleLines(lines: string[], options: SplitOptions): Map<number, "ch
   return kinds;
 }
 
-/** 整理后正文中交给 AI 复核的候选行（GLOSSARY「候选行」）。 */
+/** 整理后正文中交给 AI 复核的候选行（GLOSSARY「候选行」），并标出其中可疑的行。 */
 export function findCandidateLines(text: string, options: SplitOptions): CandidateLine[] {
   const lines = text.split("\n");
-  return candidateLines(lines, ruleTitleLines(lines, options));
+  const candidates = candidateLines(lines, ruleTitleLines(lines, options));
+  const chapters = splitChapters(text, options);
+  // 涉及序号异常的章节：乱序、重复编号，以及缺号前后的两章。分卷边界系统已自动处理，不算。
+  const anomalous = new Set<number>();
+  for (const a of findNumberAnomalies(chapters)) {
+    if (a.kind === "missing") anomalous.add(a.after).add(a.after + 1);
+    else if (a.kind === "duplicate") a.orders.forEach((o) => anomalous.add(o));
+    else if (a.kind === "outOfOrder") anomalous.add(a.order);
+  }
+  const bytes = encoder.encode(text);
+  const decoder = new TextDecoder();
+  return markSuspicious(
+    candidates,
+    chapters.map((c) => ({
+      title: c.title,
+      byteOffset: c.byteOffset,
+      chars: decoder.decode(bytes.subarray(c.byteOffset, c.byteOffset + c.byteLength)).replace(/\s/g, "").length,
+      numberAnomaly: anomalous.has(c.order),
+    })),
+  );
 }
 
 function chapterSegments(lines: string[], options: SplitOptions): Segment[] {
