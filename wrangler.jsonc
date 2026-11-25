@@ -1,13 +1,14 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "apps/server/node_modules/wrangler/config-schema.json",
+  // 放在仓库根目录：Deploy to Cloudflare 按钮从仓库根目录读取 Wrangler 配置，并按这里的绑定创建 D1 与 R2。
   "name": "novarium",
-  "main": "src/worker.ts",
+  "main": "apps/server/src/worker.ts",
   "compatibility_date": "2026-11-24",
   "secrets": {
     "required": ["OWNER_PASSWORD"]
   },
   "assets": {
-    "directory": "../web/dist",
+    "directory": "apps/web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
@@ -16,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "novarium",
-      "migrations_dir": "migrations"
+      "migrations_dir": "apps/server/migrations"
     }
   ],
   "r2_buckets": [

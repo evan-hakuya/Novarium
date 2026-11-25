@@ -8,7 +8,9 @@ COPY apps/server/package.json apps/server/
 COPY packages/core/package.json packages/core/
 RUN pnpm install --frozen-lockfile
 COPY . .
+# 根目录的 deploy 脚本（Cloudflare 部署用）会挡住 pnpm 内置的 deploy 命令，构建镜像时先去掉它。
 RUN pnpm build \
+  && npm pkg delete scripts.deploy \
   && pnpm --filter @novarium/server deploy --prod --legacy /out
 
 FROM node:24-slim

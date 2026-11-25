@@ -19,6 +19,10 @@ Every change reaches `main` through a squash-merged PR. GitHub signs the squash 
 
 Production is the owner's real library. Test data created there is removed by its own ID only; owner-created records stay untouched.
 
+## Schema changes
+
+Deploy runs `wrangler deploy` before `wrangler d1 migrations apply DB --remote`, so new code briefly serves requests on the old schema. Ship schema changes as expand, then contract: a PR may only add columns or tables, and the code must work while they are missing. Drop or rename in a later PR, after every deployment has applied the expand migration.
+
 ## Repairing history
 
 When an Unverified or badly formatted commit lands on `main`: move it to a branch, rewrite it as one Conventional Commit, reset `main` to the last good commit and push with `--force-with-lease=main:<bad-sha>`, then continue from step 6.
