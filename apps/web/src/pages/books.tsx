@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { booksQueryKey, describeError, fetchBooks, formatBytes } from "@/api/books";
 import { fetchHealth } from "@/api/health";
+import { BookCover } from "@/components/book-metadata";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,13 +32,18 @@ export function BooksPage() {
           <li key={book.id}>
             <Link to="/books/$bookId" params={{ bookId: book.id }}>
               <Card className="transition-colors hover:bg-muted/50">
-                <CardHeader>
-                  <CardTitle>{book.title}</CardTitle>
-                  <CardDescription>{book.author || "佚名"}</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {book.chapterCount} 章 · {formatBytes(book.textSize)}
-                </CardContent>
+                <div className="flex items-start gap-4 px-6">
+                  <BookCover book={book} className="h-20 w-14" />
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <CardHeader className="px-0">
+                      <CardTitle>{book.title}</CardTitle>
+                      <CardDescription>{book.author || "佚名"}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="px-0 text-sm text-muted-foreground">
+                      {book.chapterCount} 章 · {formatBytes(book.textSize)}
+                    </CardContent>
+                  </div>
+                </div>
               </Card>
             </Link>
           </li>

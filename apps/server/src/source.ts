@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { desc, eq, or, sql } from "drizzle-orm";
 import type { AppDeps } from "./app";
 import { readChapter } from "./books";
-import { books, chapters, versions } from "./db/schema";
+import { bookTags, books, chapters, versions } from "./db/schema";
+import { serveCover } from "./metadata";
 
 type Env = { Variables: { deps: AppDeps } };
 
@@ -10,6 +11,8 @@ type Env = { Variables: { deps: AppDeps } };
 export const SOURCE_BASE = "/api/source";
 /** 书源网络导入地址的路径前缀，后接访问令牌。 */
 export const IMPORT_BASE = "/api/book-sources";
+/** 封面地址的路径前缀，后接书 ID 与封面上传 ID（见 ADR 0005）。 */
+export const COVER_BASE = "/api/covers";
 const SEARCH_PAGE_SIZE = 20;
 
 const bookUrl = (id: string) => `${SOURCE_BASE}/books/${id}`;
@@ -37,15 +40,19 @@ export function buildBookSource({ origin, token, name }: { origin: string; token
       bookList: "$.books[*]",
       name: "$.title",
       author: "$.author",
+      kind: "$.kind",
       intro: "$.intro",
       lastChapter: "$.lastChapter",
+      coverUrl: "$.coverUrl",
       bookUrl: "$.url",
     },
     ruleBookInfo: {
       name: "$.title",
       author: "$.author",
+      kind: "$.kind",
       intro: "$.intro",
       lastChapter: "$.lastChapter",
+      coverUrl: "$.coverUrl",
       tocUrl: "$.tocUrl",
     },
     ruleToc: {
@@ -68,19 +75,39 @@ export function createSourceRoutes() {
     where ${chapters.versionId} = ${books.currentVersionId}
     order by ${chapters.ord} desc limit 1)`;
 
+  const tags = sql<string>`(
+    select json_group_array(tag) from (
+      select ${bookTags.tag} as tag from ${bookTags} where ${bookTags.bookId} = ${books.id} order by tag))`;
+
   const summaryFields = {
     id: books.id,
     title: books.title,
     author: books.author,
+    intro: books.intro,
+    coverKey: books.coverKey,
+    tags,
     chapterCount: versions.chapterCount,
     lastChapter,
   };
 
-  const toSummary = (row: { id: string; title: string; author: string; chapterCount: number; lastChapter: string | null }) => ({
+  const toSummary = (row: {
+    id: string;
+    title: string;
+    author: string;
+    intro: string;
+    coverKey: string | null;
+    tags: string;
+    chapterCount: number;
+    lastChapter: string | null;
+  }) => ({
     title: row.title,
     author: row.author,
-    intro: `共 ${row.chapterCount} 章`,
+    intro: row.intro || `共 ${row.chapterCount} 章`,
+    // Legado 的分类字段，多个值用逗号分隔。
+    kind: (JSON.parse(row.tags) as string[]).join(","),
     lastChapter: row.lastChapter ?? "",
+    // 地址含封面的上传 ID：换封面后地址随之改变，阅读客户端不会用缓存的旧图。
+    coverUrl: row.coverKey ? `${COVER_BASE}/${row.id}/${row.coverKey.split("/").pop()}` : "",
     url: bookUrl(row.id),
   });
 
@@ -137,5 +164,21 @@ export function createSourceRoutes() {
     return c.json({ title: result.title, content: result.content });
   });
 
+  return app;
+}
+
+/**
+ * 封面图片，不需要访问令牌。阅读客户端加载图片时不一定带书源的请求头（例如 reader 的图片代理），
+ * 所以封面地址本身就是凭证：上传 ID 是随机 UUID，只有它与当前封面一致时才返回图片。
+ */
+export function createCoverRoutes() {
+  const app = new Hono<Env>();
+  app.get("/:bookId/:uploadId", async (c) => {
+    const { bookId, uploadId } = c.req.param();
+    const { db } = c.get("deps");
+    const book = await db.select({ coverKey: books.coverKey }).from(books).where(eq(books.id, bookId)).get();
+    if (!book?.coverKey || book.coverKey.split("/").pop() !== uploadId) return c.json({ error: "not_found" }, 404);
+    return serveCover(c.get("deps"), bookId);
+  });
   return app;
 }

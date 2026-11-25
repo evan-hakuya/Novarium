@@ -12,7 +12,8 @@ import {
 } from "./auth";
 import { createBookRoutes, type BatchQuery } from "./books";
 import type { Db } from "./db";
-import { createSourceRoutes, IMPORT_BASE, SOURCE_BASE } from "./source";
+import { createMetadataRoutes } from "./metadata";
+import { COVER_BASE, createCoverRoutes, createSourceRoutes, IMPORT_BASE, SOURCE_BASE } from "./source";
 import { createSettingsRoutes } from "./settings";
 import type { StorageProvider } from "./storage/types";
 import { createImportRoutes, createTokenRoutes, requireAccessToken } from "./tokens";
@@ -80,6 +81,7 @@ export function createApi(getDeps: (c: { env: unknown }) => AppDeps) {
   // 所有者 API 都挂在 /api/admin 下。
   api.use("/admin/*", requireOwner<Env>((c) => c.get("deps").ownerPassword));
   api.route("/admin", createBookRoutes());
+  api.route("/admin", createMetadataRoutes());
   api.route("/admin", createTokenRoutes());
   api.route("/admin", createSettingsRoutes());
 
@@ -88,6 +90,7 @@ export function createApi(getDeps: (c: { env: unknown }) => AppDeps) {
   api.use(`${sourcePath}/*`, requireAccessToken<Env>());
   api.route(sourcePath, createSourceRoutes());
   api.route(IMPORT_BASE.slice("/api".length), createImportRoutes());
+  api.route(COVER_BASE.slice("/api".length), createCoverRoutes());
 
   api.notFound((c) => c.json({ error: "not_found" }, 404));
 
