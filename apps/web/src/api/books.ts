@@ -26,7 +26,7 @@ export interface BookDetail {
   };
   /** 当前版本。options 是生成它的整理选项。 */
   version: { id: string; options: ProcessOptions; createdAt: string };
-  chapters: { order: number; title: string; number: number | null; byteLength: number }[];
+  chapters: { order: number; title: string; number: number | null; byteLength: number; volume: string | null }[];
 }
 
 export interface ChapterContent {

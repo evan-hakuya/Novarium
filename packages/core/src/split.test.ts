@@ -131,4 +131,57 @@ describe("splitChapters", () => {
     expect(checkChapterPattern("^第.+章")).toBeNull();
     expect(() => splitChapters("x", { chapterPattern: "(" })).toThrow(/invalid chapter pattern/);
   });
+
+  describe("卷", () => {
+    it("没有卷的书，章节的卷为 null", () => {
+      const chapters = splitChapters("第一章 甲\n正文。\n第二章 乙\n正文。", builtin);
+      expect(chapters.map((c) => [c.title, c.volume])).toEqual([
+        ["第一章 甲", null],
+        ["第二章 乙", null],
+      ]);
+    });
+
+    it("识别卷标题并把后续章节归入该卷；卷内序号可以重新从 1 开始", () => {
+      const text = [
+        "第一卷 风起",
+        "第一章 甲",
+        "甲正文。",
+        "第二章 乙",
+        "乙正文。",
+        "第二卷 云涌",
+        "本卷讲的是云涌。",
+        "第一章 丙",
+        "丙正文。",
+      ].join("\n");
+      const chapters = splitChapters(text, builtin);
+      expect(chapters.map((c) => [c.title, c.number, c.volume])).toEqual([
+        ["第一章 甲", 1, "第一卷 风起"],
+        ["第二章 乙", 2, "第一卷 风起"],
+        // 卷标题后有正文：这段正文作为以卷标题为标题的章节。
+        ["第二卷 云涌", null, "第二卷 云涌"],
+        ["第一章 丙", 1, "第二卷 云涌"],
+      ]);
+      expect(readChapter(text, chapters[2]!)).toBe("本卷讲的是云涌。");
+      expect(readChapter(text, chapters[0]!)).toBe("甲正文。");
+    });
+
+    it("识别「卷三」「上卷」，不把带章节号的行或正文句当作卷", () => {
+      const text = ["卷三 归来", "第一章 甲", "正文。", "第一卷 第二章 乙", "正文。", "上卷", "第三章 丙", "第一部电影很好看，我们看完了。"].join("\n");
+      const chapters = splitChapters(text, builtin);
+      expect(chapters.map((c) => [c.title, c.volume])).toEqual([
+        ["第一章 甲", "卷三 归来"],
+        ["第一卷 第二章 乙", "卷三 归来"],
+        ["第三章 丙", "上卷"],
+      ]);
+    });
+
+    it("这本书用「卷」作章节单位时，不识别卷", () => {
+      const text = ["第一卷 甲", "正文。", "第二卷 乙", "正文。", "第三卷 丙", "正文。"].join("\n");
+      expect(splitChapters(text, builtin).map((c) => [c.title, c.volume])).toEqual([
+        ["第一卷 甲", null],
+        ["第二卷 乙", null],
+        ["第三卷 丙", null],
+      ]);
+    });
+  });
 });

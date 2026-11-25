@@ -42,13 +42,27 @@ export async function ownerCookieHeader() {
 }
 
 /** 绕过导入流程，直接写入一本书。 */
-export async function addBook(deps: AppDeps, id: string, title: string, author: string, chapterTexts: [string, string][]) {
+export async function addBook(
+  deps: AppDeps,
+  id: string,
+  title: string,
+  author: string,
+  chapterTexts: [title: string, body: string, volume?: string][],
+) {
   const versionId = crypto.randomUUID();
   const encoder = new TextEncoder();
   let offset = 0;
-  const index = chapterTexts.map(([chapterTitle, body], order) => {
+  const index = chapterTexts.map(([chapterTitle, body, volume], order) => {
     const byteLength = encoder.encode(body).length;
-    const entry = { versionId, ord: order, title: chapterTitle, number: order + 1, byteOffset: offset, byteLength };
+    const entry = {
+      versionId,
+      ord: order,
+      title: chapterTitle,
+      number: order + 1,
+      byteOffset: offset,
+      byteLength,
+      volume: volume ?? null,
+    };
     offset += byteLength;
     return entry;
   });

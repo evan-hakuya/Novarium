@@ -59,6 +59,7 @@ export function buildBookSource({ origin, token, name }: { origin: string; token
       chapterList: "$.chapters[*]",
       chapterName: "$.title",
       chapterUrl: "$.url",
+      isVolume: "$.isVolume",
     },
     ruleContent: {
       content: "$.content",
@@ -146,16 +147,28 @@ export function createSourceRoutes() {
     const bookId = c.req.param("bookId");
     // 一条语句按当前版本取目录，切换版本时不会读到新旧混合的目录。
     const list = await db
-      .select({ order: chapters.ord, title: chapters.title })
+      .select({ order: chapters.ord, title: chapters.title, volume: chapters.volume })
       .from(chapters)
       .innerJoin(books, eq(books.currentVersionId, chapters.versionId))
       .where(eq(books.id, bookId))
       .orderBy(chapters.ord);
     if (list.length === 0) return c.json({ error: "not_found" }, 404);
-    return c.json({
-      chapters: list.map((ch) => ({ title: ch.title, url: `${bookUrl(bookId)}/chapters/${ch.order}` })),
-    });
+    // 每卷第一章前插入一个卷条目，Legado 显示为卷标题。
+    // 卷条目也给出各不相同的链接：客户端按链接去重，不支持 isVolume 的客户端（如 reader）会把卷当作空章节显示。
+    const toc: { title: string; url: string; isVolume: boolean }[] = [];
+    let currentVolume: string | null = null;
+    for (const ch of list) {
+      if (ch.volume && ch.volume !== currentVolume) {
+        toc.push({ title: ch.volume, url: `${bookUrl(bookId)}/volumes/${ch.order}`, isVolume: true });
+      }
+      currentVolume = ch.volume;
+      toc.push({ title: ch.title, url: `${bookUrl(bookId)}/chapters/${ch.order}`, isVolume: false });
+    }
+    return c.json({ chapters: toc });
   });
+
+  // 卷条目没有正文。只有不支持 isVolume 的客户端会请求这里。
+  app.get("/books/:bookId/volumes/:order", (c) => c.json({ title: "", content: "" }));
 
   app.get("/books/:bookId/chapters/:order", async (c) => {
     const result = await readChapter(c.get("deps"), c.req.param("bookId"), c.req.param("order"));
