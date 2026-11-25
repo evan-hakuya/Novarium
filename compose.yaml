@@ -1,9 +1,11 @@
 services:
   novarium:
-    build: .
+    # 发布在 GHCR 的镜像。想从源码构建时，把这一行换成 `build: .`。
+    image: ghcr.io/evan-hakuya/novarium:latest
     ports:
       - "8080:8080"
     volumes:
+      # 数据库、原稿、正文与封面都在 ./data 中，备份这个目录即可。
       - ./data:/data
     environment:
       # 所有者密码。在 compose.yaml 同目录的 .env 中设置 OWNER_PASSWORD=...

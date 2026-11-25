@@ -13,7 +13,21 @@
     "build": "pnpm --filter @novarium/web build && pnpm --filter @novarium/server build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "deploy:cf": "pnpm --filter @novarium/web build && pnpm --filter @novarium/server run deploy:cf"
+    "deploy": "pnpm --filter @novarium/server run deploy:cf",
+    "deploy:cf": "pnpm --filter @novarium/web build && pnpm run deploy"
+  },
+  "cloudflare": {
+    "bindings": {
+      "OWNER_PASSWORD": {
+        "description": "所有者密码，用来登录后台。建议用 `openssl rand -base64 24` 生成一个随机密码并保存好。"
+      },
+      "DB": {
+        "description": "D1 数据库，保存书目、章节索引与访问令牌。"
+      },
+      "BOOKS": {
+        "description": "R2 存储桶，保存原稿、整理后的正文与封面。"
+      }
+    }
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
