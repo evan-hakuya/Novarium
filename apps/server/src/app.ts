@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { sql } from "drizzle-orm";
 import { getCookie } from "hono/cookie";
 import {
@@ -12,6 +12,7 @@ import {
 } from "./auth";
 import { createBookRoutes, type BatchQuery } from "./books";
 import type { Db } from "./db";
+import { checkLoginBlock, clearLoginFailures, recordLoginFailure } from "./login-limit";
 import { createMetadataRoutes } from "./metadata";
 import { COVER_BASE, createCoverRoutes, createSourceRoutes, IMPORT_BASE, SOURCE_BASE } from "./source";
 import { createSettingsRoutes } from "./settings";
@@ -28,6 +29,8 @@ export interface AppDeps {
   ownerPassword: string | undefined;
   /** 原子地执行一组写入：全部成功或全部不生效。 */
   batch(queries: [BatchQuery, ...BatchQuery[]]): Promise<void>;
+  /** 请求的来源 IP，用于限制登录尝试。取不到时返回 undefined。 */
+  clientIp(c: Context): string | undefined;
 }
 
 type Env = { Variables: { deps: AppDeps } };
@@ -62,13 +65,23 @@ export function createApi(getDeps: (c: { env: unknown }) => AppDeps) {
   });
 
   api.post("/auth/login", async (c) => {
-    const { ownerPassword } = c.get("deps");
+    const { ownerPassword, db, clientIp } = c.get("deps");
     if (!ownerPassword) return c.json({ error: "owner_password_not_configured" }, 503);
+    const ip = clientIp(c) ?? "unknown";
+    const block = await checkLoginBlock(db, ip);
+    if (block) {
+      console.warn(JSON.stringify({ message: "login rate limited", ip, ...block }));
+      c.header("retry-after", String(block.retryAfterSeconds));
+      return c.json({ error: "too_many_attempts", retryAfterSeconds: block.retryAfterSeconds }, 429);
+    }
     const body = await c.req.json().catch(() => null);
     const password = typeof body?.password === "string" ? body.password : "";
     if (!(await verifyPassword(ownerPassword, password))) {
+      await recordLoginFailure(db, ip);
+      console.warn(JSON.stringify({ message: "login failed", ip }));
       return c.json({ error: "invalid_password" }, 401);
     }
+    await clearLoginFailures(db, ip);
     setSessionCookie(c, await createSessionValue(ownerPassword));
     return c.json({ authenticated: true });
   });

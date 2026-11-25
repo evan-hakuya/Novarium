@@ -31,6 +31,8 @@ export function createTestApp() {
         for (const query of queries) (query as unknown as { run(): unknown }).run();
       })();
     },
+    // 测试用请求头 x-test-ip 模拟来源 IP。
+    clientIp: (c) => c.req.header("x-test-ip") ?? "127.0.0.1",
   };
   const api = createApi(() => deps);
   const fetchApi = async (path: string, init?: RequestInit) => api.request(new URL(path, ORIGIN).toString(), init);

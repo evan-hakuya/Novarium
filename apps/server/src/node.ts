@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApi, type AppDeps } from "./app";
 import { cleanupStaleUploads, STALE_UPLOAD_MS } from "./cleanup";
@@ -18,6 +19,8 @@ const dataDir = resolve(process.env.DATA_DIR ?? "./data");
 const webDir = resolve(process.env.WEB_DIR ?? join(here, "../../web/dist"));
 const migrationsDir = resolve(process.env.MIGRATIONS_DIR ?? join(here, "../migrations"));
 const port = Number(process.env.PORT ?? 8080);
+// 只有放在反向代理后面时才设置：此时连接地址是代理的地址，来源 IP 取 X-Forwarded-For。
+const trustProxy = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY ?? "");
 
 mkdirSync(dataDir, { recursive: true });
 const sqlite = new Database(join(dataDir, "novarium.db"));
@@ -37,6 +40,9 @@ const deps: AppDeps = {
       for (const query of queries) (query as unknown as { run(): unknown }).run();
     })();
   },
+  // 取 X-Forwarded-For 最右边的地址：它由紧挨着本服务的代理写入，客户端无法伪造。
+  clientIp: (c) =>
+    (trustProxy && c.req.header("x-forwarded-for")?.split(",").at(-1)?.trim()) || getConnInfo(c).remote.address,
 };
 if (!deps.ownerPassword) {
   console.warn(JSON.stringify({ message: "OWNER_PASSWORD is not set; owner login is disabled" }));

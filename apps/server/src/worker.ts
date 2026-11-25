@@ -15,6 +15,8 @@ function createDeps(env: Env): AppDeps {
     batch: async (queries) => {
       await db.batch(queries);
     },
+    // Cloudflare 在边缘写入的真实来源 IP，客户端无法伪造。
+    clientIp: (c) => c.req.header("cf-connecting-ip"),
   };
 }
 

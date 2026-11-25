@@ -10,4 +10,6 @@ services:
     environment:
       # 所有者密码。在 compose.yaml 同目录的 .env 中设置 OWNER_PASSWORD=...
       OWNER_PASSWORD: ${OWNER_PASSWORD:?set OWNER_PASSWORD in .env}
+      # 放在反向代理后面时改为 "true"，按 X-Forwarded-For 识别来源 IP。
+      TRUST_PROXY: ${TRUST_PROXY:-false}
     restart: unless-stopped
