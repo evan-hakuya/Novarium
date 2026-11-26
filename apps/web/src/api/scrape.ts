@@ -30,6 +30,55 @@ export const clearScrapeKey = () => request<ScrapeStatus>("/api/admin/settings/s
 export const checkScrape = () =>
   request<{ ok: true; quota: ScrapeQuota }>("/api/admin/settings/scrape/check", { method: "POST" }).then((r) => r.quota);
 
+/** 刮削源中的一部作品。 */
+export interface ScrapedBook {
+  ref: string;
+  url: string;
+  title: string | null;
+  author: string | null;
+  intro: string | null;
+  tags: string[];
+  coverUrl: string | null;
+  platform: string;
+  wordCount: number | null;
+  status: "ongoing" | "completed" | null;
+  releasedAt: string | null;
+}
+
+export type ScrapeField = "title" | "author" | "intro" | "tags" | "cover";
+
+export const searchScrape = (bookId: string, q: string) =>
+  request<{ results: ScrapedBook[] }>(`/api/admin/books/${bookId}/scrape/search?${new URLSearchParams({ q })}`).then((r) => r.results);
+
+export const applyScrape = (bookId: string, ref: string, fields: ScrapeField[]) =>
+  request<{ ok: true }>(`/api/admin/books/${bookId}/scrape`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ref, fields }),
+  });
+
+const platformNames: Record<string, string> = {
+  qidian: "起点",
+  fanqie: "番茄",
+  jjwxc: "晋江",
+  faloo: "飞卢",
+  qimao: "七猫",
+  zongheng: "纵横",
+  seventeenk: "17K",
+  sfacg: "SF 轻小说",
+  ciweimao: "刺猬猫",
+};
+
+export const platformName = (platform: string) => platformNames[platform] ?? platform;
+
+/** 字数，例如「446.5 万字」。 */
+export function formatWordCount(count: number | null): string | null {
+  if (count === null) return null;
+  return count >= 10_000 ? `${Number((count / 10_000).toFixed(1))} 万字` : `${count} 字`;
+}
+
+export const statusText = { ongoing: "连载", completed: "完结" } as const;
+
 const kindText: Record<string, string> = {
   invalid_key: "密钥无效或已撤销，请在 DaoSearch 账号页检查",
   rate_limited: "请求过于频繁",

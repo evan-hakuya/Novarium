@@ -33,6 +33,11 @@ export const books = sqliteTable("books", {
   /** 封面在存储中的键名与图片类型；没有封面时为空。每次上传换一个键，旧键随后删除。 */
   coverKey: text("cover_key"),
   coverType: text("cover_type"),
+  /** 刮削来源（ADR 0006）：刮削源、作品在刮削源中的 ID、作品页链接与最近一次刮削的时间。没有刮削过时为空。 */
+  scrapeSource: text("scrape_source"),
+  scrapeRef: text("scrape_ref"),
+  scrapeUrl: text("scrape_url"),
+  scrapedAt: integer("scraped_at", { mode: "timestamp_ms" }),
   currentVersionId: text("current_version_id").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),

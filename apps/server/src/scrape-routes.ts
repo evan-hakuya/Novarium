@@ -1,14 +1,19 @@
 import { Hono, type Context } from "hono";
 import { eq } from "drizzle-orm";
 import type { AppDeps } from "./app";
-import { createDaoSearchSource } from "./daosearch";
-import { settings } from "./db/schema";
-import { ScrapeError, type ScrapeSource, type ScrapeSourceId } from "./scrape";
+import type { BatchQuery } from "./books";
+import { createDaoSearchSource, DAOSEARCH_USER_AGENT } from "./daosearch";
+import { books, bookTags, settings } from "./db/schema";
+import { deleteStaleFiles, getTags, MAX_COVER_BYTES, MAX_INTRO_LENGTH, MAX_TAG_LENGTH, MAX_TAGS, sniffImageType, staleFileEntries } from "./metadata";
+import { ScrapeError, type ScrapedBook, type ScrapeSource, type ScrapeSourceId } from "./scrape";
+import { coverKey } from "./storage/keys";
 
 type Env = { Variables: { deps: AppDeps } };
 
 /** DaoSearch API 密钥在 settings 表中的键（ADR 0006）。 */
 const DAOSEARCH_KEY = "daosearch_key";
+/** 下载封面的超时。 */
+const COVER_TIMEOUT_MS = 15_000;
 
 export interface ScrapeStatus {
   /** 是否已填写密钥。没有时后台不显示刮削功能。 */
@@ -48,6 +53,43 @@ export function scrapeErrorResponse(c: Context<Env>, error: unknown) {
   return c.json({ error: "scrape_unavailable", kind: error.kind, retryAfterSeconds: error.retryAfterSeconds }, 502);
 }
 
+/** 作者与这本书现有作者一致的候选排在前面，其余保持刮削源给出的顺序。 */
+export function rankByAuthor(results: ScrapedBook[], author: string): ScrapedBook[] {
+  const own = author.trim();
+  if (!own) return results;
+  return [...results.filter((r) => r.author?.trim() === own), ...results.filter((r) => r.author?.trim() !== own)];
+}
+
+/** 把刮削到的标签合并进现有标签：现有标签全部保留，跳过重复与过长的标签，总数不超过上限。 */
+export function mergeTags(existing: string[], scraped: string[]): string[] {
+  const merged = [...existing];
+  for (const raw of scraped) {
+    const tag = raw.trim();
+    if (merged.length >= MAX_TAGS) break;
+    if (!tag || [...tag].length > MAX_TAG_LENGTH || merged.includes(tag)) continue;
+    merged.push(tag);
+  }
+  return merged;
+}
+
+/** 下载刮削源的封面。不带刮削源密钥：封面可能在其他站点上。沿用封面上传的大小与格式校验。 */
+async function downloadCover(doFetch: typeof fetch, url: string): Promise<{ bytes: Uint8Array; type: string } | null> {
+  if (!/^https:\/\//.test(url)) return null;
+  try {
+    const res = await doFetch(url, { headers: { "user-agent": DAOSEARCH_USER_AGENT }, signal: AbortSignal.timeout(COVER_TIMEOUT_MS) });
+    if (!res.ok || Number(res.headers.get("content-length")) > MAX_COVER_BYTES) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > MAX_COVER_BYTES) return null;
+    const type = sniffImageType(bytes);
+    return type ? { bytes, type } : null;
+  } catch {
+    return null;
+  }
+}
+
+const FIELDS = ["title", "author", "intro", "tags", "cover"] as const;
+type Field = (typeof FIELDS)[number];
+
 // 刮削设置。挂在 /api/admin 下，受 session 保护。
 export function createScrapeRoutes() {
   const app = new Hono<Env>();
@@ -82,6 +124,80 @@ export function createScrapeRoutes() {
     } catch (error) {
       return scrapeErrorResponse(c, error);
     }
+  });
+
+  // 刮削对话框的候选列表。q 可以是书名、作者，或 DaoSearch 与源站的书页链接。
+  app.get("/books/:bookId/scrape/search", async (c) => {
+    const deps = c.get("deps");
+    const q = (c.req.query("q") ?? "").trim();
+    if (!q || q.length > 200) return c.json({ error: "invalid_query" }, 400);
+    const book = await deps.db.select({ author: books.author }).from(books).where(eq(books.id, c.req.param("bookId"))).get();
+    if (!book) return c.json({ error: "not_found" }, 404);
+    const source = await getScrapeSource(deps);
+    if (!source) return c.json({ error: "scrape_not_configured" }, 409);
+    try {
+      return c.json({ results: rankByAuthor(await source.search(q), book.author) });
+    } catch (error) {
+      return scrapeErrorResponse(c, error);
+    }
+  });
+
+  // 写入所有者勾选的字段，并记下刮削来源。服务端按作品 ID 重新读取，不信任浏览器传来的值。
+  app.post("/books/:bookId/scrape", async (c) => {
+    const deps = c.get("deps");
+    const { db, batch } = deps;
+    const bookId = c.req.param("bookId");
+    const body = (await c.req.json().catch(() => null)) as { ref?: unknown; fields?: unknown } | null;
+    const fields = Array.isArray(body?.fields) ? body.fields : null;
+    if (typeof body?.ref !== "string" || !fields || !fields.every((f) => FIELDS.includes(f as Field))) {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+    const chosen = new Set(fields as Field[]);
+    const current = await db.select({ coverKey: books.coverKey }).from(books).where(eq(books.id, bookId)).get();
+    if (!current) return c.json({ error: "not_found" }, 404);
+    const source = await getScrapeSource(deps);
+    if (!source) return c.json({ error: "scrape_not_configured" }, 409);
+
+    let scraped: ScrapedBook;
+    try {
+      scraped = await source.getBook(body.ref);
+    } catch (error) {
+      return scrapeErrorResponse(c, error);
+    }
+
+    const now = new Date();
+    const set: Partial<typeof books.$inferInsert> = {
+      scrapeSource: source.id,
+      scrapeRef: scraped.ref,
+      scrapeUrl: scraped.url,
+      scrapedAt: now,
+      updatedAt: now,
+    };
+    const title = scraped.title?.trim();
+    if (chosen.has("title") && title) set.title = title.slice(0, 200);
+    if (chosen.has("author") && scraped.author?.trim()) set.author = scraped.author.trim().slice(0, 100);
+    if (chosen.has("intro") && scraped.intro?.trim()) set.intro = scraped.intro.trim().slice(0, MAX_INTRO_LENGTH);
+
+    const queries: BatchQuery[] = [];
+    let stale: string[] = [];
+    if (chosen.has("cover") && scraped.coverUrl) {
+      const cover = await downloadCover(deps.fetch ?? fetch, scraped.coverUrl);
+      if (!cover) return c.json({ error: "cover_download_failed" }, 502);
+      const key = coverKey(bookId, crypto.randomUUID());
+      await deps.storage.put(key, cover.bytes);
+      set.coverKey = key;
+      set.coverType = cover.type;
+      stale = current.coverKey ? [current.coverKey] : [];
+      queries.push(...staleFileEntries(db, stale));
+    }
+    if (chosen.has("tags") && scraped.tags.length > 0) {
+      const existing = await getTags(db, bookId);
+      const added = mergeTags(existing, scraped.tags).slice(existing.length);
+      if (added.length > 0) queries.push(db.insert(bookTags).values(added.map((tag) => ({ bookId, tag }))));
+    }
+    await batch([db.update(books).set(set).where(eq(books.id, bookId)), ...queries]);
+    await deleteStaleFiles(deps, stale);
+    return c.json({ ok: true });
   });
 
   return app;

@@ -23,6 +23,10 @@ export interface BookDetail {
     coverKey: string | null;
     originalName: string;
     originalSize: number;
+    /** 刮削来源（ADR 0006）。没有刮削过时为 null。 */
+    scrapeSource: string | null;
+    scrapeUrl: string | null;
+    scrapedAt: string | null;
   };
   /** 当前版本。options 是生成它的整理选项。 */
   version: { id: string; options: ProcessOptions; createdAt: string };
@@ -205,6 +209,8 @@ const errorText: Record<string, string> = {
   cover_too_large: "封面不能超过 5 MB。",
   invalid_name: "名称不能为空，且不能超过 50 字。",
   invalid_key: "密钥不能为空，不能含空格，且不能超过 200 字。",
+  cover_download_failed: "封面下载失败，没有写入任何项。可以取消勾选封面后重试。",
+  invalid_query: "关键词不能为空，且不能超过 200 字。",
   token_revoked: "这个访问令牌已撤销。",
   token_not_viewable: "这个访问令牌创建时没有保存明文，无法再次查看书源。",
   unauthorized: "登录已失效，请重新登录。",

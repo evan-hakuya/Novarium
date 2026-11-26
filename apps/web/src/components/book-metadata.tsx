@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   booksQueryKey,
@@ -13,6 +13,8 @@ import {
   type BookDetail,
   type BookMetadata,
 } from "@/api/books";
+import { fetchScrapeStatus, scrapeStatusQueryKey } from "@/api/scrape";
+import { ScrapeDialog } from "@/components/scrape-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +44,9 @@ export function BookMetadataPanel({ book }: { book: Book }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<BookMetadata>(() => pick(book));
   const [tagInput, setTagInput] = useState("");
+  const [scraping, setScraping] = useState(false);
+  // 没有填写刮削源密钥时不显示刮削入口。
+  const scrapeStatus = useQuery({ queryKey: scrapeStatusQueryKey, queryFn: fetchScrapeStatus, staleTime: 60_000 });
   const refresh = () => queryClient.invalidateQueries({ queryKey: booksQueryKey });
 
   const save = useMutation({
@@ -194,6 +199,15 @@ export function BookMetadataPanel({ book }: { book: Book }) {
               )}
             </div>
             <p className="whitespace-pre-wrap text-sm text-muted-foreground">{book.intro || "没有简介。"}</p>
+            {book.scrapeUrl && (
+              <p className="text-xs text-muted-foreground">
+                资料来源：
+                <a className="underline" href={book.scrapeUrl} target="_blank" rel="noreferrer">
+                  DaoSearch
+                </a>
+                {book.scrapedAt && `（${new Date(book.scrapedAt).toLocaleDateString("zh-CN")} 刮削）`}
+              </p>
+            )}
             <div className="flex gap-2">
               <Button
                 size="sm"
@@ -206,6 +220,11 @@ export function BookMetadataPanel({ book }: { book: Book }) {
               >
                 编辑信息
               </Button>
+              {scrapeStatus.data?.configured && (
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => setScraping(true)}>
+                  刮削
+                </Button>
+              )}
               <Button size="sm" variant="destructive" disabled={busy} onClick={onDelete}>
                 {remove.isPending ? "删除中…" : "删除这本书"}
               </Button>
@@ -214,6 +233,7 @@ export function BookMetadataPanel({ book }: { book: Book }) {
         )}
         {error && <p className="text-sm text-destructive">{describeError(error)}</p>}
       </div>
+      <ScrapeDialog book={book} open={scraping} onOpenChange={setScraping} />
     </section>
   );
 }
