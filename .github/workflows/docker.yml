@@ -60,7 +60,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      # PR：只构建 amd64，加载到本机，不推送。
+      # PR：只构建 amd64，加载到本机，不推送。load 不支持多平台，所以和上面分成两步。
       - uses: docker/build-push-action@v7
         if: github.event_name == 'pull_request'
         with:
@@ -78,5 +78,6 @@ jobs:
             if [ "$i" -eq 30 ]; then echo "::error::/api/health did not become ok"; docker logs novarium; exit 1; fi
             sleep 1
           done
-          curl -sf -o /dev/null http://localhost:8080/ || { echo "::error::/ did not return 200"; docker logs novarium; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)
+          [ "$code" = 200 ] || { echo "::error::/ returned $code, expected 200"; docker logs novarium; exit 1; }
           echo "health and web app OK"
