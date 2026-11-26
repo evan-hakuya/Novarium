@@ -2,6 +2,8 @@
 
 Every change reaches `main` through a squash-merged PR. GitHub signs the squash commit, so `main` shows only **Verified** commits. This machine has no gpg: a local commit pushed straight to `main` is Unverified.
 
+GitHub enforces this. A ruleset on `main` requires a PR and requires the `check` and `title` jobs to pass. It also blocks force pushes and branch deletion. The repo allows squash merges only, uses the PR title as the commit subject, and deletes the branch after merge. `.github/workflows/pr-title.yml` checks that the PR title is a Conventional Commit. The ruleset does not use "require signed commits": that rule also checks the unsigned commits on the PR branch and blocks the squash merge. PR-only, squash-only merging already makes every commit on `main` GitHub-signed.
+
 ## Steps
 
 1. **Branch.** `git switch main && git pull`, then `git switch -c codex/<issue>-<slug>` (no issue: `codex/<slug>`).
@@ -25,4 +27,4 @@ Deploy runs `wrangler deploy` before `wrangler d1 migrations apply DB --remote`,
 
 ## Repairing history
 
-When an Unverified or badly formatted commit lands on `main`: move it to a branch, rewrite it as one Conventional Commit, reset `main` to the last good commit and push with `--force-with-lease=main:<bad-sha>`, then continue from step 6.
+When an Unverified or badly formatted commit lands on `main`: move it to a branch, rewrite it as one Conventional Commit, and reset `main` to the last good commit. The ruleset blocks the force push, so ask the owner first. Then disable the ruleset (get `<id>` from `gh api repos/evan-hakuya/Novarium/rulesets -q '.[].id'`, then `gh api -X PUT repos/evan-hakuya/Novarium/rulesets/<id> -f enforcement=disabled`), push with `--force-with-lease=main:<bad-sha>`, and set `enforcement=active` again right away. Continue from step 6.
