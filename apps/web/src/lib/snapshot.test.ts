@@ -40,12 +40,12 @@ describe("snapshotRows", () => {
     const rows = snapshotRows({
       ...empty,
       availability: { state: "removed_at_source", since: "2026-10-01" },
-      rankings: [{ label: "月票榜", channel: "男频", position: 3, url: "https://daosearch.io/r" }],
+      rankings: [{ label: "月票榜", channel: "男频", position: 3, url: "https://example.com/r" }],
       pace: { chaptersPerWeek: 0, paused: true, days: 30 },
     });
     expect(rows).toEqual([
       { label: "在架状态", text: `源站已下架（${new Date("2026-10-01").toLocaleDateString("zh-CN")} 起）` },
-      { label: "月票榜（男频）", text: "第 3 名", url: "https://daosearch.io/r" },
+      { label: "月票榜（男频）", text: "第 3 名", url: "https://example.com/r" },
       { label: "更新速度", text: "近 30 天没有新章节" },
     ]);
   });
