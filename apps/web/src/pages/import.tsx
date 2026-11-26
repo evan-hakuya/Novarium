@@ -79,7 +79,16 @@ export function ImportPage() {
   const [author, setAuthor] = useState("");
   const [intro, setIntro] = useState("");
   const ai = useAiMetadata(source);
-  const rerun = useCallback((next: ProcessOptions) => source && void run(source.bytes, next), [source, run]);
+  // 错误显示在引发它的那一步：整理出错在「检查章节」，导入出错在「确认导入」。
+  const [errorAt, setErrorAt] = useState<"process" | "import">("process");
+  const rerun = useCallback(
+    (next: ProcessOptions) => {
+      if (!source) return;
+      setErrorAt("process");
+      void run(source.bytes, next);
+    },
+    [source, run],
+  );
   const review = useAiReview({ bytes: source?.bytes ?? null, preview, processing, onChangeOptions: rerun });
   // 书库中同名同作者的书；不为 null 时等待所有者选择导入方式。
   const [duplicates, setDuplicates] = useState<DuplicateBook[] | null>(null);
@@ -120,6 +129,7 @@ export function ImportPage() {
 
   async function onSubmit() {
     if (!source || !preview) return;
+    setErrorAt("import");
     setError(null);
     try {
       const found = await findDuplicates(title, author);
@@ -137,6 +147,7 @@ export function ImportPage() {
     if (!source || !preview) return;
     const { version, options: used } = preview;
     setDuplicates(null);
+    setErrorAt("import");
     setError(null);
     try {
       const id = await importBook(
@@ -159,6 +170,7 @@ export function ImportPage() {
     if (!source || !preview) return;
     const { version, options: used } = preview;
     setDuplicates(null);
+    setErrorAt("import");
     setError(null);
     try {
       await saveNewVersion(
@@ -240,13 +252,15 @@ export function ImportPage() {
       (!!suggestion.author && suggestion.author !== author.trim()) ||
       (!!suggestion.intro && suggestion.intro !== intro.trim()));
 
-  const blocker = !title.trim()
-    ? "填写书名后才能导入"
-    : pending > 0
-      ? `还有 ${pending} 处章节异常待处理`
-      : review.progress
-        ? "AI 复核进行中"
-        : null;
+  // 导入按钮禁用的全部原因，显示在按钮旁并作为它的描述。
+  const blockers = [
+    processing && "整理中",
+    uploading && "导入中",
+    !title.trim() && "填写书名后才能导入",
+    pending > 0 && `还有 ${pending} 处章节异常待处理`,
+    review.progress && "AI 复核进行中",
+    duplicates && "先在下方选择导入方式",
+  ].filter((b): b is string => !!b);
   const errorLine = error && <p className="whitespace-pre-wrap text-sm text-destructive">{error}</p>;
 
   return (
@@ -281,20 +295,21 @@ export function ImportPage() {
           <OptionsPanel
             key={source.file.name + source.file.lastModified}
             options={options}
-            onChange={(next) => void run(source.bytes, next)}
+            onChange={rerun}
             disabled={uploading}
           />
           {version && (
             <PreviewBrowser
               version={version}
               options={preview.options}
-              onChangeOptions={(next) => void run(source.bytes, next)}
+              onChangeOptions={rerun}
               onPatchOptions={patchOptions}
               aiItems={review.items}
               toolbar={<AiReviewToolbar ai={review} disabled={busy} />}
               disabled={busy}
             />
           )}
+          {version && errorAt === "process" && errorLine}
         </Step>
       )}
 
@@ -363,18 +378,18 @@ export function ImportPage() {
             </div>
           </Step>
 
-          <Step n={4} title="导入">
+          <Step n={4} title="确认导入">
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <p id="import-status" className="text-muted-foreground">
                 {version.chapters.length} 章 · 整理后 {formatBytes(version.text.byteLength)} · 原稿原样保留
-                {blocker && <span className="text-destructive"> · {blocker}</span>}
+                {blockers.length > 0 && <span className="text-destructive"> · {blockers.join(" · ")}</span>}
               </p>
-              <Button aria-describedby="import-status" onClick={onSubmit} disabled={busy || !!blocker || duplicates !== null}>
+              <Button aria-describedby="import-status" onClick={onSubmit} disabled={blockers.length > 0}>
                 导入这本书
               </Button>
             </div>
             {uploadStep && <p className="text-sm text-muted-foreground">{uploadStep}</p>}
-            {errorLine}
+            {errorAt === "import" && errorLine}
             {duplicates && (
               <section className="flex flex-col gap-3 rounded-xl border border-amber-500/50 bg-amber-50/50 p-4 text-sm dark:bg-amber-950/20">
                 <p className="font-medium">

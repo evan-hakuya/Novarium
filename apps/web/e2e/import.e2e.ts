@@ -72,7 +72,7 @@ test("imports a large manuscript", async ({ page }) => {
 
   await test.step("the page follows the import steps", async () => {
     const steps = page.getByRole("heading", { level: 3 }).filter({ hasText: /^\d/ });
-    await expect(steps).toHaveText(["1原稿", "2检查章节", "3书目信息", "4导入"]);
+    await expect(steps).toHaveText(["1原稿", "2检查章节", "3书目信息", "4确认导入"]);
   });
 
   await page.locator("#title").fill("");
