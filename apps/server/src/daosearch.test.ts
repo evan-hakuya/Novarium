@@ -100,6 +100,17 @@ describe("DaoSearch 刮削源", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("补全详情的批量读取失败时，整次搜索按错误归类", async () => {
+    const { doFetch } = fakeFetch((url) =>
+      url.includes("/search?")
+        ? json(200, { data: [{ source: "qidian", source_book_id: "1" }] })
+        : apiError(429, "quota_exceeded", { "retry-after": "600" }),
+    );
+    const error = await scrapeError(createDaoSearchSource(KEY, doFetch).search("诡秘"));
+    expect(error.kind).toBe("quota");
+    expect(error.retryAfterSeconds).toBe(600);
+  });
+
   it("按 ID 读取作品，取中文的书名、作者、简介与标签", async () => {
     const { calls, doFetch } = fakeFetch(() => json(200, { data: book }));
     const result = await createDaoSearchSource(KEY, doFetch).getBook("qidian/1010868264");

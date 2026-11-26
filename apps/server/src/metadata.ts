@@ -11,6 +11,8 @@ export const MAX_COVER_BYTES = 5 * 1024 * 1024;
 export const MAX_TAGS = 20;
 export const MAX_TAG_LENGTH = 20;
 export const MAX_INTRO_LENGTH = 5000;
+export const MAX_TITLE_LENGTH = 200;
+export const MAX_AUTHOR_LENGTH = 100;
 
 /** 按文件头判断图片类型，不信任请求的 Content-Type。 */
 export function sniffImageType(bytes: Uint8Array): string | null {
@@ -71,11 +73,11 @@ export function createMetadataRoutes() {
     if (!body || typeof body !== "object") return c.json({ error: "invalid_body" }, 400);
     const set: Partial<typeof books.$inferInsert> = {};
     if ("title" in body) {
-      if (typeof body.title !== "string" || !body.title.trim() || body.title.length > 200) return c.json({ error: "invalid_title" }, 400);
+      if (typeof body.title !== "string" || !body.title.trim() || body.title.length > MAX_TITLE_LENGTH) return c.json({ error: "invalid_title" }, 400);
       set.title = body.title.trim();
     }
     if ("author" in body) {
-      if (typeof body.author !== "string" || body.author.length > 100) return c.json({ error: "invalid_author" }, 400);
+      if (typeof body.author !== "string" || body.author.length > MAX_AUTHOR_LENGTH) return c.json({ error: "invalid_author" }, 400);
       set.author = body.author.trim();
     }
     if ("intro" in body) {

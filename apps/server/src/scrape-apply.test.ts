@@ -126,8 +126,16 @@ describe("刮削接口", () => {
       expect([...book.tags].sort()).toEqual(["悬疑", "自己加的"].sort());
     });
 
-    it("封面不是图片时整次写入失败，书不变", async () => {
-      coverResponse = () => new Response("<html>");
+    it.each([
+      ["不是图片", () => new Response("<html>")],
+      ["404", () => new Response(PNG, { status: 404 })],
+      ["声明超过 5 MB", () => new Response(PNG, { headers: { "content-length": String(6 * 1024 * 1024) } })],
+      ["实际超过 5 MB", () => new Response(new Uint8Array(5 * 1024 * 1024 + 1).fill(0x89))],
+      ["网络错误", (): Response => {
+        throw new TypeError("fetch failed");
+      }],
+    ])("封面%s时整次写入失败，书不变", async (_name, response) => {
+      coverResponse = response;
       const res = await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/2", fields: ["title", "cover"] });
       expect(res.status).toBe(502);
       expect(await res.json()).toEqual({ error: "cover_download_failed" });

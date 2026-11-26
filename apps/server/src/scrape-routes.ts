@@ -4,7 +4,18 @@ import type { AppDeps } from "./app";
 import type { BatchQuery } from "./books";
 import { createDaoSearchSource, DAOSEARCH_USER_AGENT } from "./daosearch";
 import { books, bookTags, settings } from "./db/schema";
-import { deleteStaleFiles, getTags, MAX_COVER_BYTES, MAX_INTRO_LENGTH, MAX_TAG_LENGTH, MAX_TAGS, sniffImageType, staleFileEntries } from "./metadata";
+import {
+  deleteStaleFiles,
+  getTags,
+  MAX_AUTHOR_LENGTH,
+  MAX_COVER_BYTES,
+  MAX_INTRO_LENGTH,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  MAX_TITLE_LENGTH,
+  sniffImageType,
+  staleFileEntries,
+} from "./metadata";
 import { ScrapeError, type ScrapedBook, type ScrapeSource, type ScrapeSourceId } from "./scrape";
 import { coverKey } from "./storage/keys";
 
@@ -72,14 +83,49 @@ export function mergeTags(existing: string[], scraped: string[]): string[] {
   return merged;
 }
 
+/** 截到最多 max 个 UTF-16 单位，不切断代理对。与元数据接口的 length 校验一致。 */
+function clip(text: string, max: number): string {
+  let out = "";
+  for (const ch of text) {
+    if (out.length + ch.length > max) break;
+    out += ch;
+  }
+  return out;
+}
+
+/** 读取响应体，超过 max 字节时停止并返回 null。 */
+async function readCapped(res: Response, max: number): Promise<Uint8Array | null> {
+  if (!res.body) return null;
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 /** 下载刮削源的封面。不带刮削源密钥：封面可能在其他站点上。沿用封面上传的大小与格式校验。 */
 async function downloadCover(doFetch: typeof fetch, url: string): Promise<{ bytes: Uint8Array; type: string } | null> {
   if (!/^https:\/\//.test(url)) return null;
   try {
     const res = await doFetch(url, { headers: { "user-agent": DAOSEARCH_USER_AGENT }, signal: AbortSignal.timeout(COVER_TIMEOUT_MS) });
     if (!res.ok || Number(res.headers.get("content-length")) > MAX_COVER_BYTES) return null;
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength === 0 || bytes.byteLength > MAX_COVER_BYTES) return null;
+    const bytes = await readCapped(res, MAX_COVER_BYTES);
+    if (!bytes || bytes.byteLength === 0) return null;
     const type = sniffImageType(bytes);
     return type ? { bytes, type } : null;
   } catch {
@@ -174,9 +220,9 @@ export function createScrapeRoutes() {
       updatedAt: now,
     };
     const title = scraped.title?.trim();
-    if (chosen.has("title") && title) set.title = title.slice(0, 200);
-    if (chosen.has("author") && scraped.author?.trim()) set.author = scraped.author.trim().slice(0, 100);
-    if (chosen.has("intro") && scraped.intro?.trim()) set.intro = scraped.intro.trim().slice(0, MAX_INTRO_LENGTH);
+    if (chosen.has("title") && title) set.title = clip(title, MAX_TITLE_LENGTH);
+    if (chosen.has("author") && scraped.author?.trim()) set.author = clip(scraped.author.trim(), MAX_AUTHOR_LENGTH);
+    if (chosen.has("intro") && scraped.intro?.trim()) set.intro = clip(scraped.intro.trim(), MAX_INTRO_LENGTH);
 
     const queries: BatchQuery[] = [];
     let stale: string[] = [];

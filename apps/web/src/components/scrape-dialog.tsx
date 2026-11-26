@@ -66,7 +66,7 @@ function ScrapeFlow({ book, onDone }: { book: Book; onDone: () => void }) {
                   <span className="font-medium">{result.title ?? "（无书名）"}</span>
                   <span className="text-sm text-muted-foreground">
                     {result.author ?? "佚名"}
-                    {book.author && result.author === book.author && (
+                    {book.author.trim() && result.author?.trim() === book.author.trim() && (
                       <Badge variant="secondary" className="ml-2">
                         作者一致
                       </Badge>
