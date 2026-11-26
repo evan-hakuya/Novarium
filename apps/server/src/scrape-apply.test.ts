@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { mergeTags, rankByAuthor } from "./scrape-routes";
-import type { ScrapedBook } from "./scrape";
+import type { ScrapeCandidate, ScrapedBook } from "./scrape";
 import { addBook, createTestApp, ownerCookieHeader } from "./test-app";
 
 // 刮削对话框的搜索与写入。DaoSearch 用假的 fetch 模拟。
@@ -22,7 +22,7 @@ const daoBook = (id: string, author: string) => ({
   released: null,
 });
 
-const candidate = (ref: string, author: string | null) => ({ ref, author }) as ScrapedBook;
+const candidate = (ref: string, author: string | null) => ({ ref, author }) as ScrapeCandidate;
 
 describe("刮削写入的纯函数", () => {
   it("作者一致的候选排在前面，其余保持顺序", () => {
@@ -47,10 +47,7 @@ describe("刮削接口", () => {
   const fakeFetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = String(input);
     requests.push({ url, authorization: new Headers(init?.headers).get("authorization") });
-    if (url.includes("/search?")) return Response.json({ data: [{ source: "qidian", source_book_id: "1" }, { source: "qidian", source_book_id: "2" }] });
-    if (url.includes("/books?ids=")) {
-      return Response.json({ data: [daoBook("1", "别人"), daoBook("2", "无名氏")].map((book) => ({ status: "found", book })) });
-    }
+    if (url.includes("/search?")) return Response.json({ data: [daoBook("1", "别人"), daoBook("2", "无名氏")] });
     if (url.includes("/books/qidian/2")) return Response.json({ data: daoBook("2", "无名氏") });
     if (url.startsWith("https://img.example/")) return coverResponse();
     return Response.json({ error: { code: "not_found", status: 404 } }, { status: 404 });
@@ -74,8 +71,9 @@ describe("刮削接口", () => {
     await call("PATCH", `/api/admin/books/${BOOK_ID}`, { tags: ["悬疑", "自己加的"] });
   });
 
-  it("没有密钥时搜索与写入返回 409，不请求 DaoSearch", async () => {
-    expect((await call("GET", `/api/admin/books/${BOOK_ID}/scrape/search?q=x`)).status).toBe(409);
+  it("没有密钥时搜索、详情与写入返回 409，不请求 DaoSearch", async () => {
+    expect((await call("GET", "/api/admin/scrape/search?q=x")).status).toBe(409);
+    expect((await call("GET", "/api/admin/scrape/books?ref=qidian/2")).status).toBe(409);
     expect((await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/2", fields: [] })).status).toBe(409);
     expect(requests).toHaveLength(0);
   });
@@ -85,17 +83,31 @@ describe("刮削接口", () => {
       await call("PUT", "/api/admin/settings/scrape", { key: "ds_test_0123456789abcdef" });
     });
 
-    it("搜索：作者与这本书一致的候选在前", async () => {
-      const res = await call("GET", `/api/admin/books/${BOOK_ID}/scrape/search?q=${encodeURIComponent("归藏")}`);
+    it("搜索：作者一致的候选在前，只返回候选字段，只请求一次 DaoSearch", async () => {
+      const res = await call("GET", `/api/admin/scrape/search?q=${encodeURIComponent("归藏")}&author=${encodeURIComponent("无名氏")}`);
       expect(res.status).toBe(200);
-      const { results } = (await res.json()) as { results: ScrapedBook[] };
+      const { results } = (await res.json()) as { results: ScrapeCandidate[] };
       expect(results.map((r) => [r.ref, r.author])).toEqual([["qidian/2", "无名氏"], ["qidian/1", "别人"]]);
-      expect(results[0]).toMatchObject({ wordCount: 1000, status: "ongoing" });
+      expect(results[0]).not.toHaveProperty("wordCount");
+      expect(requests).toHaveLength(1);
     });
 
-    it("搜索：空关键词与不存在的书", async () => {
-      expect((await call("GET", `/api/admin/books/${BOOK_ID}/scrape/search?q=%20`)).status).toBe(400);
-      expect((await call("GET", `/api/admin/books/22222222-2222-4222-8222-222222222222/scrape/search?q=x`)).status).toBe(404);
+    it("搜索与详情：空参数返回 400", async () => {
+      expect((await call("GET", "/api/admin/scrape/search?q=%20")).status).toBe(400);
+      expect((await call("GET", "/api/admin/scrape/books?ref=")).status).toBe(400);
+    });
+
+    it("相同的搜索与详情命中缓存；写入时读取详情也命中缓存", async () => {
+      const q = `/api/admin/scrape/search?q=${encodeURIComponent("归藏")}`;
+      await call("GET", q);
+      await call("GET", q);
+      const res = await call("GET", "/api/admin/scrape/books?ref=qidian/2");
+      expect(res.status).toBe(200);
+      const { book } = (await res.json()) as { book: ScrapedBook };
+      expect(book).toMatchObject({ ref: "qidian/2", intro: "简介2", wordCount: 1000, status: "ongoing" });
+      await call("GET", "/api/admin/scrape/books?ref=qidian/2");
+      await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/2", fields: ["title"] });
+      expect(requests.map((r) => new URL(r.url).pathname)).toEqual(["/api/v1/search", "/api/v1/books/qidian/2"]);
     });
 
     it("写入勾选的字段：标签合并、下载封面、记下刮削来源；封面请求不带密钥", async () => {

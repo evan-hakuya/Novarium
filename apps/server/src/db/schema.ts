@@ -93,6 +93,19 @@ export const pendingUploads = sqliteTable(
   (t) => [index("pending_uploads_created_at_idx").on(t.createdAt)],
 );
 
+// 刮削源响应的缓存（ADR 0006）。key 是请求路径；fetchedAt 是最近一次从刮削源取得或验证的时间，usedAt 用于清理。
+export const scrapeCache = sqliteTable(
+  "scrape_cache",
+  {
+    key: text("key").primaryKey(),
+    etag: text("etag"),
+    data: text("data", { mode: "json" }).notNull(),
+    fetchedAt: integer("fetched_at", { mode: "timestamp_ms" }).notNull(),
+    usedAt: integer("used_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("scrape_cache_used_at_idx").on(t.usedAt)],
+);
+
 // 登录失败记录，用于限制登录尝试次数（见 login-limit.ts）。移出时间窗口的记录在下次登录失败时删除。
 export const loginFailures = sqliteTable(
   "login_failures",

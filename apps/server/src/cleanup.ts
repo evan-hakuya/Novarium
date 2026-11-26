@@ -1,11 +1,18 @@
 import { inArray, lt } from "drizzle-orm";
 import type { AppDeps } from "./app";
-import { pendingUploads } from "./db/schema";
+import { pendingUploads, scrapeCache } from "./db/schema";
 
 /** 上传后超过这个时长仍未被提交引用的文件视为孤立文件。 */
 export const STALE_UPLOAD_MS = 60 * 60 * 1000;
 /** 每次清理最多处理的文件数，避免撞上 Workers 的子请求上限。 */
 export const CLEANUP_BATCH = 50;
+/** 刮削缓存超过这个时长没有使用时删除。 */
+export const SCRAPE_CACHE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** 删除超过保留时长没有使用的刮削缓存。 */
+export async function cleanupScrapeCache(deps: Pick<AppDeps, "db">, now = Date.now()): Promise<void> {
+  await deps.db.delete(scrapeCache).where(lt(scrapeCache.usedAt, new Date(now - SCRAPE_CACHE_RETENTION_MS)));
+}
 
 /** 删除导入失败留下的孤立文件，返回删除的数量。 */
 export async function cleanupStaleUploads(deps: Pick<AppDeps, "db" | "storage">, now = Date.now()): Promise<number> {

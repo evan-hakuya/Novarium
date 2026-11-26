@@ -1,11 +1,21 @@
 // DaoSearch 刮削源（ADR 0006，`docs/agents/daosearch.md`）。只从服务端调用。
-import { ScrapeError, type ScrapedBook, type ScrapeErrorKind, type ScrapeQuota, type ScrapeSource } from "./scrape";
+import {
+  ScrapeError,
+  type ScrapeCache,
+  type ScrapeCandidate,
+  type ScrapedBook,
+  type ScrapeErrorKind,
+  type ScrapeQuota,
+  type ScrapeSource,
+} from "./scrape";
 
 export const DAOSEARCH_BASE = "https://daosearch.io/api/v1";
 export const DAOSEARCH_USER_AGENT = "Novarium (+https://github.com/evan-hakuya/Novarium)";
 export const DAOSEARCH_TIMEOUT_MS = 15_000;
-/** 搜索返回的候选数。搜索 5 点与数量无关；补全详情的批量读取每本 1 点。 */
+/** 搜索返回的候选数。搜索 5 点，与数量无关。 */
 const SEARCH_LIMIT = 10;
+/** 搜索与作品响应的缓存时长，与 DaoSearch 声明的 x-cache-seconds 一致。过期后带 ETag 重新验证，304 不消耗点数。 */
+export const DAOSEARCH_CACHE_MS = 6 * 60 * 60 * 1000;
 
 const PLATFORMS = new Set(["qidian", "fanqie", "jjwxc", "faloo", "qimao", "zongheng", "seventeenk", "sfacg", "ciweimao"]);
 /** 作品 ID 只允许字母、数字、下划线与连字符，避免「..」等路径段把请求带到别的端点。 */
@@ -19,23 +29,18 @@ interface Text {
 interface DaoSearchResult {
   source: string;
   source_book_id: string;
-}
-
-interface DaoSearchBook extends DaoSearchResult {
   url: string;
   title: Text;
   author: Text;
   cover_url: string | null;
+}
+
+interface DaoSearchBook extends DaoSearchResult {
   synopsis_zh: string | null;
   tags: Text[] | null;
   word_count: number | null;
   status: string | null;
   released: { date: string } | null;
-}
-
-interface DaoSearchBatchItem {
-  status: string;
-  book: DaoSearchBook | null;
 }
 
 interface DaoSearchLimits {
@@ -57,16 +62,22 @@ export function classifyDaoSearchError(status: number, code: string | undefined)
 
 const zh = (text: Text | null | undefined) => text?.zh ?? text?.en ?? null;
 
+function toCandidate(item: DaoSearchResult): ScrapeCandidate {
+  return {
+    ref: `${item.source}/${item.source_book_id}`,
+    url: item.url,
+    title: zh(item.title),
+    author: zh(item.author),
+    coverUrl: item.cover_url,
+    platform: item.source,
+  };
+}
+
 function toBook(book: DaoSearchBook): ScrapedBook {
   return {
-    ref: `${book.source}/${book.source_book_id}`,
-    url: book.url,
-    title: zh(book.title),
-    author: zh(book.author),
+    ...toCandidate(book),
     intro: book.synopsis_zh,
     tags: (book.tags ?? []).map(zh).filter((tag): tag is string => !!tag),
-    coverUrl: book.cover_url,
-    platform: book.source,
     wordCount: book.word_count ?? null,
     status: book.status === "ongoing" || book.status === "completed" ? book.status : null,
     releasedAt: book.released?.date ?? null,
@@ -82,13 +93,27 @@ function parseRef(ref: string): { platform: string; id: string } {
   return { platform, id };
 }
 
-export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch, timeoutMs = DAOSEARCH_TIMEOUT_MS): ScrapeSource {
-  async function get<T>(path: string): Promise<T> {
+export interface DaoSearchOptions {
+  timeoutMs?: number;
+  /** 搜索与作品响应的缓存。不提供时每次都请求。 */
+  cache?: ScrapeCache;
+  now?: () => number;
+}
+
+export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch, options: DaoSearchOptions = {}): ScrapeSource {
+  const { timeoutMs = DAOSEARCH_TIMEOUT_MS, cache, now = Date.now } = options;
+
+  async function request<T>(path: string, etag?: string | null): Promise<{ notModified: true } | { notModified: false; data: T; etag: string | null }> {
     let res: Response;
     try {
       // 作品 ID 合并时返回 301，fetch 自动跟随到新地址（同源，保留 Authorization）。
       res = await doFetch(`${DAOSEARCH_BASE}${path}`, {
-        headers: { authorization: `Bearer ${key}`, "user-agent": DAOSEARCH_USER_AGENT, accept: "application/json" },
+        headers: {
+          authorization: `Bearer ${key}`,
+          "user-agent": DAOSEARCH_USER_AGENT,
+          accept: "application/json",
+          ...(etag ? { "if-none-match": etag } : {}),
+        },
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
@@ -96,6 +121,7 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
       if (name === "TimeoutError" || name === "AbortError") throw new ScrapeError("network", `DaoSearch timed out after ${timeoutMs} ms`);
       throw new ScrapeError("network", error instanceof Error ? error.message : String(error));
     }
+    if (res.status === 304 && etag) return { notModified: true };
     const body = (await res.json().catch(() => null)) as { data?: T; error?: { code?: string; message?: string } } | null;
     if (!res.ok) {
       const retryAfter = Number(res.headers.get("retry-after"));
@@ -106,35 +132,45 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
       );
     }
     if (!body || body.data === undefined) throw new ScrapeError("unavailable", "unexpected DaoSearch response");
-    return body.data;
+    return { notModified: false, data: body.data, etag: res.headers.get("etag") };
+  }
+
+  async function get<T>(path: string): Promise<T> {
+    const result = await request<T>(path);
+    if (result.notModified) throw new ScrapeError("unavailable", "unexpected 304");
+    return result.data;
+  }
+
+  /** 带缓存的读取：缓存未过期时不发请求；过期后带 ETag 重新验证。出错时不写缓存。 */
+  async function getCached<T>(path: string, valid: (data: unknown) => boolean): Promise<T> {
+    if (!cache) return get<T>(path);
+    const entry = await cache.get(path);
+    const usable = entry && valid(entry.data) ? entry : null;
+    if (usable && now() - usable.fetchedAt < DAOSEARCH_CACHE_MS) {
+      await cache.touch(path, false);
+      return usable.data as T;
+    }
+    const result = await request<T>(path, usable?.etag);
+    if (result.notModified) {
+      await cache.touch(path, true);
+      return usable!.data as T;
+    }
+    if (!valid(result.data)) throw new ScrapeError("unavailable", "unexpected DaoSearch response");
+    await cache.put(path, result.etag, result.data);
+    return result.data;
   }
 
   return {
     id: "daosearch",
     async search(query) {
       const params = new URLSearchParams({ q: query, limit: String(SEARCH_LIMIT) });
-      const found = await get<DaoSearchResult[]>(`/search?${params}`);
-      if (!Array.isArray(found)) throw new ScrapeError("unavailable", "unexpected DaoSearch search response");
-      if (found.length === 0) return [];
-      // 搜索结果只有书名、作者与封面；用批量读取补全字数、状态、简介等，按搜索的顺序返回。
-      const ids = found.map((item) => `${item.source}:${item.source_book_id}`).join(",");
-      const items = await get<DaoSearchBatchItem[]>(`/books?${new URLSearchParams({ ids })}`);
-      if (!Array.isArray(items)) throw new ScrapeError("unavailable", "unexpected DaoSearch batch response");
-      const seen = new Set<string>();
-      const books: ScrapedBook[] = [];
-      for (const item of items) {
-        if (!item.book) continue;
-        const book = toBook(item.book);
-        // 两个 ID 合并到同一本书时只保留一次。
-        if (seen.has(book.ref)) continue;
-        seen.add(book.ref);
-        books.push(book);
-      }
-      return books;
+      const found = await getCached<DaoSearchResult[]>(`/search?${params}`, Array.isArray);
+      return found.map(toCandidate);
     },
     async getBook(ref) {
       const { platform, id } = parseRef(ref);
-      return toBook(await get<DaoSearchBook>(`/books/${platform}/${encodeURIComponent(id)}`));
+      const isBook = (data: unknown) => !!data && typeof data === "object" && "source_book_id" in data;
+      return toBook(await getCached<DaoSearchBook>(`/books/${platform}/${encodeURIComponent(id)}`, isBook));
     },
     async check(): Promise<ScrapeQuota> {
       const limits = await get<DaoSearchLimits>("/limits/me");

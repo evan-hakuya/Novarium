@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/d1";
 import { createBindingAiClient } from "./ai";
 import { createApi, type AppDeps } from "./app";
-import { cleanupStaleUploads } from "./cleanup";
+import { cleanupScrapeCache, cleanupStaleUploads } from "./cleanup";
 import * as schema from "./db/schema";
 import { createR2Storage } from "./storage/r2";
 
@@ -29,8 +29,10 @@ export default {
   fetch(request, env, ctx) {
     return api.fetch(request, env, ctx);
   },
-  // Cron Trigger：定时清理导入失败留下的孤立文件。
+  // Cron Trigger：定时清理导入失败留下的孤立文件与过期的刮削缓存。
   scheduled(_controller, env, ctx) {
-    ctx.waitUntil(cleanupStaleUploads(createDeps(env)));
+    const deps = createDeps(env);
+    ctx.waitUntil(cleanupStaleUploads(deps));
+    ctx.waitUntil(cleanupScrapeCache(deps));
   },
 } satisfies ExportedHandler<Env>;

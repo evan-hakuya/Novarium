@@ -23,10 +23,11 @@
 |---|---|---|
 | `GET /limits/me` | 设置页「测试连接」，显示当天剩余点数 | 0 |
 | `GET /search?q=<书名或链接>&limit=10` | 刮削对话框的候选列表。`q` 也接受 DaoSearch 或源站的书页链接。只返回书名、作者、封面 | 5 |
-| `GET /books?ids=<source>:<id>,…` | 一次补全搜索结果的详情（字数、状态、首发日期、简介、标签），最多 50 本；ID 合并时 `status` 为 `moved` | 每本 1 |
-| `GET /books/{source}/{source_book_id}` | 选定后读取详情；再次刮削按已保存的 ID 读取。ID 合并时返回 301 | 1 |
+| `GET /books/{source}/{source_book_id}` | 点击候选后读取详情；再次刮削按已保存的 ID 读取。ID 合并时返回 301 | 1 |
 
-一次刮削约 16 点：搜索 5 点，补全 10 个候选 10 点，写入前服务端按作品 ID 重新读取 1 点。
+一次刮削约 6 点：搜索 5 点，查看一个候选的详情 1 点。写入前服务端按作品 ID 重新读取，命中缓存，不扣点。搜索后不批量读取候选详情。
+
+缓存：搜索与作品响应按请求路径存在 `scrape_cache` 表。6 小时内（与 `x-cache-seconds` 一致）直接用缓存；过期后带 `If-None-Match` 重新验证，304 不扣点。请求出错时不写缓存。30 天没有使用的缓存由定时清理删除。浏览器内另有 30 分钟的查询缓存。
 
 `source` 取值：qidian、fanqie、jjwxc、faloo、qimao、zongheng、seventeenk、sfacg、ciweimao。
 
