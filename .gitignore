@@ -11,3 +11,7 @@ playwright-report/
 .DS_Store
 .impeccable/config.local.json
 .impeccable/hook.cache.json
+# 评审快照与 live 会话只在本机有用；ignore.md 是评审排除项，要提交。
+.impeccable/critique/*
+!.impeccable/critique/ignore.md
+**/.impeccable/live/
