@@ -7,7 +7,7 @@ The reviewer reads this file during workflow step 8 (`docs/agents/workflow.md`).
 - **External services stay on the server.** DaoSearch and Workers AI are called from `apps/server` only. Keys and tokens never reach a response body, the web app, or a log line. The web app calls Novarium's own `/api` only.
 - **AI is optional.** Import, organizing and saving work with AI off, unconfigured, out of quota or failing. AI output is a suggestion applied only on an explicit owner action; nothing calls AI automatically (ADR 0007).
 - **`packages/core` is pure.** No network, storage, timers or platform globals: it runs in the browser, the Worker and Node. Callers pass data in and get data out.
-- **Platform code stays at the edges.** `apps/server/src/app.ts` and the routes run on both Workers and Node. Code specific to one runtime lives in `worker.ts`, `node.ts`, `storage/` or `db/`, behind the shared interfaces there.
+- **Platform code stays at the edges.** `apps/server/src/app.ts` and the routes run on both Workers and Node. Code specific to one runtime lives in `worker.ts`, `node.ts`, `storage/`, `db/` or the test helper `test-app.ts`, behind the shared interfaces there.
 
 ## Data
 

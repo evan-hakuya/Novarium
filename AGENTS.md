@@ -26,4 +26,4 @@ AI review uses Workers AI `clef` and `clairic` (ADR 0007). Request formats, pric
 
 ## Workflow
 
-Every change goes branch → Conventional Commit → PR → review → squash merge → deploy; `main` only receives squash merges, which keeps its commits Verified. The agent reviews, merges and deploys its own PRs. Follow the steps in `docs/agents/workflow.md` for any code or doc change; the reviewer applies `CODING_STANDARDS.md`.
+Every change goes branch → Conventional Commit → PR → review → squash merge → deploy; `main` only receives squash merges, which keeps its commits Verified. A review subagent checks each PR against `CODING_STANDARDS.md`; the agent then merges and deploys its own PRs. Follow the steps in `docs/agents/workflow.md` for any code or doc change.
