@@ -5,7 +5,7 @@
 **验收基准**：书源相关的验收以 reader 测试为准。只有所有者明确要求时才做「阅读」App 真机验证。
 
 - reader 地址：`http://localhost:14396`，API 前缀 `/reader3`，未开启登录鉴权。
-- reader 在容器中，用 `host.docker.internal` 访问本机服务。`wrangler dev` 必须加 `--ip 0.0.0.0`。
+- reader 在容器中，用 `host.docker.internal` 访问本机服务。用 `pnpm --filter @novarium/server dev:bg` 启动本机服务，它已经监听 `0.0.0.0:8787`。
 
 步骤：
 
@@ -17,6 +17,6 @@
    - `GET /reader3/getBookInfo?url=<bookUrl>&bookSourceUrl=<书源地址>`
    - `GET /reader3/getChapterList?url=<bookUrl>&bookSourceUrl=<书源地址>`
    - `GET /reader3/getBookContent?url=<bookUrl>&index=<章节序号>&bookSourceUrl=<书源地址>`
-5. 在 `wrangler dev` 日志中核对 `/api/source/*` 请求全部是 200；出现 401 说明请求头没有带上访问令牌。
+5. 在 `/tmp/novarium-tickets/wrangler.log` 中核对 `/api/source/*` 请求全部是 200；出现 401 说明请求头没有带上访问令牌。
 
 reader 的行为接近 Legado App，但不完全相同。两者结果不一致时，记录差异并告诉所有者。
