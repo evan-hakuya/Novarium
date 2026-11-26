@@ -8,6 +8,8 @@ export const DAOSEARCH_TIMEOUT_MS = 15_000;
 const SEARCH_LIMIT = 10;
 
 const PLATFORMS = new Set(["qidian", "fanqie", "jjwxc", "faloo", "qimao", "zongheng", "seventeenk", "sfacg", "ciweimao"]);
+/** 作品 ID 只允许字母、数字、下划线与连字符，避免「..」等路径段把请求带到别的端点。 */
+const BOOK_ID = /^[A-Za-z0-9_-]+$/;
 
 interface Text {
   en: string | null;
@@ -63,7 +65,7 @@ function parseRef(ref: string): { platform: string; id: string } {
   const slash = ref.indexOf("/");
   const platform = ref.slice(0, slash);
   const id = ref.slice(slash + 1);
-  if (slash < 1 || !id || id.includes("/") || !PLATFORMS.has(platform)) throw new ScrapeError("not_found", "invalid DaoSearch ref");
+  if (slash < 1 || !BOOK_ID.test(id) || !PLATFORMS.has(platform)) throw new ScrapeError("not_found", "invalid DaoSearch ref");
   return { platform, id };
 }
 

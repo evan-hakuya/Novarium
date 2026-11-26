@@ -83,7 +83,7 @@ describe("DaoSearch 刮削源", () => {
   it("拒绝格式不对的作品 ID，不发请求", async () => {
     const { calls, doFetch } = fakeFetch(() => json(200, { data: book }));
     const source = createDaoSearchSource(KEY, doFetch);
-    for (const ref of ["", "qidian", "qidian/", "unknown/1", "qidian/1/../x"]) {
+    for (const ref of ["", "qidian", "qidian/", "unknown/1", "qidian/1/../x", "qidian/..", "qidian/.", "qidian/1?x=1"]) {
       expect((await scrapeError(source.getBook(ref))).kind).toBe("not_found");
     }
     expect(calls).toHaveLength(0);

@@ -1,4 +1,4 @@
-import { ApiError, request } from "./books";
+import { ApiError, describeError, request } from "./books";
 
 /** 刮削的状态（ADR 0006）。configured：已填写 DaoSearch 密钥；keyHint：密钥的前后几位。 */
 export interface ScrapeStatus {
@@ -39,7 +39,7 @@ const kindText: Record<string, string> = {
   network: "无法连接 DaoSearch",
 };
 
-/** 刮削请求失败的原因，例如「请求过于频繁，30 秒后重试」。 */
+/** 刮削请求失败的原因，例如「请求过于频繁，30 秒后重试」。其他错误（如登录失效）按通用文字显示。 */
 export function scrapeFailureReason(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === "scrape_not_configured") return "还没有填写 DaoSearch 密钥";
@@ -49,10 +49,10 @@ export function scrapeFailureReason(error: unknown): string {
       return wait ? `${text}，${formatWait(wait)}后重试` : text;
     }
   }
-  return kindText.unavailable;
+  return describeError(error);
 }
 
-function formatWait(seconds: number): string {
+export function formatWait(seconds: number): string {
   if (seconds < 60) return `${seconds} 秒`;
   if (seconds < 3600) return `${Math.ceil(seconds / 60)} 分钟`;
   return `${Math.ceil(seconds / 3600)} 小时`;
