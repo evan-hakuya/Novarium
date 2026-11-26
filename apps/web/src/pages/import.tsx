@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ProcessOptions } from "@novarium/core";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -79,7 +79,16 @@ export function ImportPage() {
   const [author, setAuthor] = useState("");
   const [intro, setIntro] = useState("");
   const ai = useAiMetadata(source);
-  const rerun = useCallback((next: ProcessOptions) => source && void run(source.bytes, next), [source, run]);
+  // 错误显示在引发它的那一步：整理出错在「检查章节」，导入出错在「确认导入」。
+  const [errorAt, setErrorAt] = useState<"process" | "import">("process");
+  const rerun = useCallback(
+    (next: ProcessOptions) => {
+      if (!source) return;
+      setErrorAt("process");
+      void run(source.bytes, next);
+    },
+    [source, run],
+  );
   const review = useAiReview({ bytes: source?.bytes ?? null, preview, processing, onChangeOptions: rerun });
   // 书库中同名同作者的书；不为 null 时等待所有者选择导入方式。
   const [duplicates, setDuplicates] = useState<DuplicateBook[] | null>(null);
@@ -120,6 +129,7 @@ export function ImportPage() {
 
   async function onSubmit() {
     if (!source || !preview) return;
+    setErrorAt("import");
     setError(null);
     try {
       const found = await findDuplicates(title, author);
@@ -137,6 +147,7 @@ export function ImportPage() {
     if (!source || !preview) return;
     const { version, options: used } = preview;
     setDuplicates(null);
+    setErrorAt("import");
     setError(null);
     try {
       const id = await importBook(
@@ -159,6 +170,7 @@ export function ImportPage() {
     if (!source || !preview) return;
     const { version, options: used } = preview;
     setDuplicates(null);
+    setErrorAt("import");
     setError(null);
     try {
       await saveNewVersion(
@@ -240,152 +252,191 @@ export function ImportPage() {
       (!!suggestion.author && suggestion.author !== author.trim()) ||
       (!!suggestion.intro && suggestion.intro !== intro.trim()));
 
+  // 导入按钮禁用的全部原因，显示在按钮旁并作为它的描述。
+  const blockers = [
+    processing && "整理中",
+    uploading && "导入中",
+    !title.trim() && "填写书名后才能导入",
+    pending > 0 && `还有 ${pending} 处章节异常待处理`,
+    review.progress && "AI 复核进行中",
+    duplicates && "先在下方选择导入方式",
+  ].filter((b): b is string => !!b);
+  const errorLine = error && <p className="whitespace-pre-wrap text-sm text-destructive">{error}</p>;
+
   return (
-    <div className="flex flex-col gap-4">
-      <Link to="/" className="text-sm text-muted-foreground hover:underline">
-        ← 书库
-      </Link>
-      <h2 className="font-heading text-xl font-semibold">导入</h2>
+    <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
-        <Label htmlFor="file">原稿（TXT，不超过 100 MB）</Label>
-        <Input id="file" type="file" accept=".txt,text/plain" disabled={busy} onChange={onFile} />
+        <Link to="/" className="text-sm text-muted-foreground hover:underline">
+          ← 书库
+        </Link>
+        <h2 className="font-heading text-xl font-semibold">导入</h2>
       </div>
 
-      {processing && <p className="text-sm text-muted-foreground">整理中：{source?.file.name}</p>}
-      {uploadStep && <p className="text-sm text-muted-foreground">{uploadStep}</p>}
-      {error && <p className="whitespace-pre-wrap text-sm text-destructive">{error}</p>}
-      {scrapeFailure && (
-        <p className="text-sm text-destructive">
-          书已导入，但{scrapeFailure.what}失败：{scrapeFailure.reason}。请到
-          <Link to="/books/$bookId" params={{ bookId: scrapeFailure.bookId }} className="underline">
-            书详情页
-          </Link>
-          重新刮削。
-        </p>
-      )}
+      <Step n={1} title="原稿">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="file">TXT 文件，不超过 100 MB</Label>
+          <Input id="file" type="file" accept=".txt,text/plain" disabled={busy} onChange={onFile} />
+        </div>
+        {processing && <p className="text-sm text-muted-foreground">整理中：{source?.file.name}</p>}
+        {!version && errorLine}
+        {scrapeFailure && (
+          <p className="text-sm text-destructive">
+            书已导入，但{scrapeFailure.what}失败：{scrapeFailure.reason}。请到
+            <Link to="/books/$bookId" params={{ bookId: scrapeFailure.bookId }} className="underline">
+              书详情页
+            </Link>
+            重新刮削。
+          </p>
+        )}
+      </Step>
 
       {options && source && (
-        <OptionsPanel
-          key={source.file.name + source.file.lastModified}
-          options={options}
-          onChange={(next) => void run(source.bytes, next)}
-          disabled={uploading}
-        />
+        <Step n={2} title="检查章节">
+          <OptionsPanel
+            key={source.file.name + source.file.lastModified}
+            options={options}
+            onChange={rerun}
+            disabled={uploading}
+          />
+          {version && (
+            <PreviewBrowser
+              version={version}
+              options={preview.options}
+              onChangeOptions={rerun}
+              onPatchOptions={patchOptions}
+              aiItems={review.items}
+              toolbar={<AiReviewToolbar ai={review} disabled={busy} />}
+              disabled={busy}
+            />
+          )}
+          {version && errorAt === "process" && errorLine}
+        </Step>
       )}
 
       {version && (
         <>
-          {(ai.available || scrapeConfigured) && (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              {scrapeConfigured && (
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => setScraping(true)}>
-                  刮削
-                </Button>
-              )}
-              {ai.available && (
-                <Button size="sm" variant="outline" disabled={busy || ai.pending} onClick={ai.run}>
-                  {ai.pending ? "AI 识别中…" : "AI 识别元数据"}
-                </Button>
-              )}
-              {hasNewSuggestion && (
-                <Button size="sm" variant="ghost" disabled={uploading} onClick={adoptAll}>
-                  全部采用
-                </Button>
-              )}
-              {ai.empty && <span className="text-muted-foreground">AI 没有在原稿开头找到书名、作者或简介。</span>}
-              {ai.error && <span className="text-destructive">{ai.error}</span>}
-            </div>
-          )}
-          {scrapePick && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-              <span>
-                刮削来源：
-                <a className="underline" href={scrapePick.scraped.url} target="_blank" rel="noreferrer">
-                  《{scrapePick.scraped.title ?? "（无书名）"}》{platformName(scrapePick.scraped.platform)} · DaoSearch
-                </a>
-                {scrapePick.fields.length > 0 && `。导入后写入${scrapePick.fields.map((f) => lateFieldText[f]).join("、")}`}
-              </span>
-              <Button size="sm" variant="ghost" disabled={uploading} onClick={cancelScrape}>
-                取消刮削
-              </Button>
-            </div>
-          )}
-          {scrapeConfigured && (
-            <ScrapeDialog
-              target={{ title, author, intro, tags: [], coverUrl: null, ...emptyDescription }}
-              onApply={onScrapeApply}
-              open={scraping}
-              onOpenChange={setScraping}
-            />
-          )}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="title">书名</Label>
-              <Input id="title" value={title} disabled={uploading} onChange={(e) => setTitle(e.target.value)} />
-              <SuggestionLine value={suggestion?.title ?? null} current={title} onAdopt={() => suggestion?.title && setTitle(suggestion.title)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="author">作者</Label>
-              <Input id="author" value={author} disabled={uploading} onChange={(e) => setAuthor(e.target.value)} />
-              <SuggestionLine value={suggestion?.author ?? null} current={author} onAdopt={() => suggestion?.author && setAuthor(suggestion.author)} />
-            </div>
-            <div className="flex flex-col gap-2 sm:col-span-2">
-              <Label htmlFor="intro">简介</Label>
-              <Textarea id="intro" rows={3} value={intro} disabled={uploading} onChange={(e) => setIntro(e.target.value)} />
-              <SuggestionLine value={suggestion?.intro ?? null} current={intro} onAdopt={() => suggestion?.intro && setIntro(suggestion.intro)} />
-            </div>
-          </div>
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>
-              {version.chapters.length} 章 · 整理后 {formatBytes(version.text.byteLength)}
-              {pending > 0 && <span className="text-destructive"> · 还有 {pending} 处章节异常待处理</span>}
-            </span>
-            <Button onClick={onSubmit} disabled={busy || !title.trim() || pending > 0 || duplicates !== null || !!review.progress}>
-              提交
-            </Button>
-          </div>
-          {duplicates && (
-            <section className="flex flex-col gap-3 rounded-xl border border-amber-500/50 bg-amber-50/50 p-4 text-sm dark:bg-amber-950/20">
-              <p className="font-medium">
-                书库中已有同名同作者的书。选择这份原稿的导入方式：
-              </p>
-              <ul className="flex flex-col gap-2">
-                {duplicates.map((book) => (
-                  <li key={book.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background p-3">
-                    <span>
-                      《{book.title}》{book.author || "佚名"} · {book.chapterCount} 章 · 原稿 {book.originalName} · 更新于{" "}
-                      {new Date(book.updatedAt).toLocaleString()}
-                    </span>
-                    <Button size="sm" disabled={busy} onClick={() => importAsNewVersion(book.id)}>
-                      作为这本书的新版本
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-xs text-muted-foreground">
-                作为新版本：这本书的原稿换成这份原稿，当前版本换成本次整理结果，旧原稿与旧版本被删除。作为新书：书库中另建一本，已有的书不变。
-              </p>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" disabled={busy} onClick={importAsNewBook}>
-                  作为新书
-                </Button>
-                <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDuplicates(null)}>
-                  取消
+          <Step n={3} title="书目信息">
+            {(ai.available || scrapeConfigured) && (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                {scrapeConfigured && (
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => setScraping(true)}>
+                    刮削
+                  </Button>
+                )}
+                {ai.available && (
+                  <Button size="sm" variant="outline" disabled={busy || ai.pending} onClick={ai.run}>
+                    {ai.pending ? "AI 识别中…" : "AI 识别元数据"}
+                  </Button>
+                )}
+                {hasNewSuggestion && (
+                  <Button size="sm" variant="ghost" disabled={uploading} onClick={adoptAll}>
+                    全部采用
+                  </Button>
+                )}
+                {ai.empty && <span className="text-muted-foreground">AI 没有在原稿开头找到书名、作者或简介。</span>}
+                {ai.error && <span className="text-destructive">{ai.error}</span>}
+              </div>
+            )}
+            {scrapePick && (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                <span>
+                  刮削来源：
+                  <a className="underline" href={scrapePick.scraped.url} target="_blank" rel="noreferrer">
+                    《{scrapePick.scraped.title ?? "（无书名）"}》{platformName(scrapePick.scraped.platform)} · DaoSearch
+                  </a>
+                  {scrapePick.fields.length > 0 && `。导入后写入${scrapePick.fields.map((f) => lateFieldText[f]).join("、")}`}
+                </span>
+                <Button size="sm" variant="ghost" disabled={uploading} onClick={cancelScrape}>
+                  取消刮削
                 </Button>
               </div>
-            </section>
-          )}
-          <PreviewBrowser
-            version={version}
-            options={preview.options}
-            onChangeOptions={(next) => source && void run(source.bytes, next)}
-            onPatchOptions={patchOptions}
-            aiItems={review.items}
-            toolbar={<AiReviewToolbar ai={review} disabled={busy} />}
-            disabled={busy}
-          />
+            )}
+            {scrapeConfigured && (
+              <ScrapeDialog
+                target={{ title, author, intro, tags: [], coverUrl: null, ...emptyDescription }}
+                onApply={onScrapeApply}
+                open={scraping}
+                onOpenChange={setScraping}
+              />
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="title">书名</Label>
+                <Input id="title" value={title} disabled={uploading} onChange={(e) => setTitle(e.target.value)} />
+                <SuggestionLine value={suggestion?.title ?? null} current={title} onAdopt={() => suggestion?.title && setTitle(suggestion.title)} />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="author">作者</Label>
+                <Input id="author" value={author} disabled={uploading} onChange={(e) => setAuthor(e.target.value)} />
+                <SuggestionLine value={suggestion?.author ?? null} current={author} onAdopt={() => suggestion?.author && setAuthor(suggestion.author)} />
+              </div>
+              <div className="flex flex-col gap-2 sm:col-span-2">
+                <Label htmlFor="intro">简介</Label>
+                <Textarea id="intro" rows={3} value={intro} disabled={uploading} onChange={(e) => setIntro(e.target.value)} />
+                <SuggestionLine value={suggestion?.intro ?? null} current={intro} onAdopt={() => suggestion?.intro && setIntro(suggestion.intro)} />
+              </div>
+            </div>
+          </Step>
+
+          <Step n={4} title="确认导入">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+              <p id="import-status" className="text-muted-foreground">
+                {version.chapters.length} 章 · 整理后 {formatBytes(version.text.byteLength)} · 原稿原样保留
+                {blockers.length > 0 && <span className="text-destructive"> · {blockers.join(" · ")}</span>}
+              </p>
+              <Button aria-describedby="import-status" onClick={onSubmit} disabled={blockers.length > 0}>
+                导入这本书
+              </Button>
+            </div>
+            {uploadStep && <p className="text-sm text-muted-foreground">{uploadStep}</p>}
+            {errorAt === "import" && errorLine}
+            {duplicates && (
+              <section className="flex flex-col gap-3 rounded-xl border border-amber-500/50 bg-amber-50/50 p-4 text-sm dark:bg-amber-950/20">
+                <p className="font-medium">
+                  书库中已有同名同作者的书。选择这份原稿的导入方式：
+                </p>
+                <ul className="flex flex-col gap-2">
+                  {duplicates.map((book) => (
+                    <li key={book.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background p-3">
+                      <span>
+                        《{book.title}》{book.author || "佚名"} · {book.chapterCount} 章 · 原稿 {book.originalName} · 更新于{" "}
+                        {new Date(book.updatedAt).toLocaleString()}
+                      </span>
+                      <Button size="sm" disabled={busy} onClick={() => importAsNewVersion(book.id)}>
+                        作为这本书的新版本
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  作为新版本：这本书的原稿换成这份原稿，当前版本换成本次整理结果，旧原稿与旧版本被删除。作为新书：书库中另建一本，已有的书不变。
+                </p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={busy} onClick={importAsNewBook}>
+                    作为新书
+                  </Button>
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDuplicates(null)}>
+                    取消
+                  </Button>
+                </div>
+              </section>
+            )}
+          </Step>
         </>
       )}
     </div>
+  );
+}
+
+/** 导入流程中的一步。编号表示先后顺序：先检查章节，再填书目信息，最后导入。 */
+function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+  return (
+    <section aria-labelledby={`import-step-${n}`} className="flex flex-col gap-3">
+      <h3 id={`import-step-${n}`} className="font-heading text-base font-semibold">
+        <span className="mr-2 text-muted-foreground tabular-nums">{n}</span>
+        {title}
+      </h3>
+      {children}
+    </section>
   );
 }

@@ -143,7 +143,7 @@ export function NumberReviewPanel({
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border p-4 text-sm">
-      {header(counts.pending > 0 ? `${counts.pending} 处待处理，处理完才能提交` : "已全部处理")}
+      {header(counts.pending > 0 ? `${counts.pending} 处待处理，处理完才能继续` : "已全部处理")}
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-w-0">
         <TabsList className={TAB_ROW}>
           {TABS.map((t) => (
