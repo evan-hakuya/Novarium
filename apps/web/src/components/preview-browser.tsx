@@ -31,6 +31,7 @@ export function PreviewBrowser({
   disabled?: boolean;
 }) {
   const [selected, setSelected] = useState(0);
+  const [reveal, setReveal] = useState(0);
   const items = useMemo(() => [...reviewNumbers(version.chapters, options), ...aiItems], [version.chapters, options, aiItems]);
   const flagged = useMemo(() => pendingOrders(items), [items]);
 
@@ -44,7 +45,10 @@ export function PreviewBrowser({
       <NumberReviewPanel
         items={items}
         chapterTitle={(order) => version.chapters[order]?.title ?? `#${order}`}
-        onJump={setSelected}
+        onJump={(order) => {
+          setSelected(order);
+          setReveal((n) => n + 1);
+        }}
         options={options}
         onChangeOptions={onChangeOptions}
         onPatchOptions={onPatchOptions}
@@ -56,6 +60,7 @@ export function PreviewBrowser({
         selected={selected}
         onSelect={setSelected}
         flagged={flagged}
+        revealKey={reveal}
         renderContent={(c) => <ChapterText text={chapterText(version.text, version.chapters[c.order]!)} />}
       />
     </div>
