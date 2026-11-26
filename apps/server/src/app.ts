@@ -19,6 +19,7 @@ import type { Db } from "./db";
 import { checkLoginBlock, clearLoginFailures, recordLoginFailure } from "./login-limit";
 import { createMetadataRoutes } from "./metadata";
 import { COVER_BASE, createCoverRoutes, createSourceRoutes, IMPORT_BASE, SOURCE_BASE } from "./source";
+import { createScrapeRoutes } from "./scrape-routes";
 import { createSettingsRoutes } from "./settings";
 import type { StorageProvider } from "./storage/types";
 import { createImportRoutes, createTokenRoutes, requireAccessToken } from "./tokens";
@@ -31,6 +32,8 @@ export interface AppDeps {
   storage: StorageProvider;
   /** Workers AI 客户端；部署没有配置 AI 时为 null（ADR 0007）。 */
   ai: AiClient | null;
+  /** 调用刮削源等外部服务用的 fetch。不提供时用全局 fetch；测试注入假的响应。 */
+  fetch?: typeof fetch;
   // 部署时设置的所有者密码；未设置时无法登录。
   ownerPassword: string | undefined;
   /** 原子地执行一组写入：全部成功或全部不生效。 */
@@ -106,6 +109,7 @@ export function createApi(getDeps: (c: { env: unknown }) => AppDeps) {
   api.route("/admin", createAiRoutes());
   api.route("/admin", createAiMetadataRoutes());
   api.route("/admin", createAiLineRoutes());
+  api.route("/admin", createScrapeRoutes());
 
   // 阅读客户端用的书源 API，凭访问令牌访问。
   const sourcePath = SOURCE_BASE.slice("/api".length);

@@ -5,6 +5,7 @@ import { describeError } from "@/api/books";
 import { fetchDefaultProcessOptions, processOptionsQueryKey, saveDefaultProcessOptions } from "@/api/settings";
 import { AiSettingsCard } from "@/components/ai-settings-card";
 import { CleaningStepsForm } from "@/components/process-options-form";
+import { ScrapeSettingsCard } from "@/components/scrape-settings-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -100,6 +101,7 @@ export function SettingsPage() {
         {save.isError && <span className="text-sm text-destructive">{describeError(save.error)}</span>}
       </div>
       <AiSettingsCard />
+      <ScrapeSettingsCard />
     </div>
   );
 }

@@ -18,7 +18,7 @@ export const ORIGIN = "https://novarium.example";
 export const PASSWORD = "test-password";
 const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));
 
-export function createTestApp(options: { ai?: AiClient | null } = {}) {
+export function createTestApp(options: { ai?: AiClient | null; fetch?: typeof fetch } = {}) {
   const sqlite = new Database(":memory:");
   const db = drizzle(sqlite, { schema });
   migrate(db, { migrationsFolder });
@@ -27,6 +27,7 @@ export function createTestApp(options: { ai?: AiClient | null } = {}) {
     db,
     storage: createFsStorage(mkdtempSync(join(tmpdir(), "novarium-test-"))),
     ai: options.ai ?? null,
+    fetch: options.fetch,
     ownerPassword: PASSWORD,
     batch: async (queries) => {
       sqlite.transaction(() => {
