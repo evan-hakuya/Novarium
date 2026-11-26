@@ -77,14 +77,20 @@ test("imports a large manuscript", async ({ page }) => {
   await test.step("a chapter link in the anomaly panel reveals and focuses that chapter", async () => {
     const panel = page.locator("section").filter({ hasText: "章节异常" });
     const heading = page.locator("article[data-chapter-scroll] h2");
-    for (let i = 0; i < 2; i++) {
-      // 第二次跳到已选中的章节，也要有反馈。
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await panel.getByRole("button", { name: `第${MISSING - 1}章 测试`, exact: true }).click();
-      await expect(heading).toHaveText(`第${MISSING - 1}章 测试`);
-      await expect(heading).toBeFocused();
-      await expect(heading).toBeInViewport();
+    const size = page.viewportSize()!;
+    for (const width of [size.width, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : size.height });
+      for (let i = 0; i < 2; i++) {
+        // 第二次跳到已选中的章节，且先把正文读到中间，也要回到标题。
+        await page.locator("article[data-chapter-scroll]").evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await panel.getByRole("button", { name: `第${MISSING - 1}章 测试`, exact: true }).click();
+        await expect(heading).toHaveText(`第${MISSING - 1}章 测试`);
+        await expect(heading).toBeFocused();
+        await expect(heading).toBeInViewport();
+      }
     }
+    await page.setViewportSize(size);
   });
 
   await test.step("the page follows the import steps", async () => {

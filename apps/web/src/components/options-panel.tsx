@@ -20,6 +20,8 @@ export function OptionsPanel({
 }) {
   const [patternDraft, setPatternDraft] = useState(options.chapterPattern ?? "");
   const [patternError, setPatternError] = useState<string | null>(null);
+  // 只按打开面板时是否已有本书正则决定是否展开，清空正则后不自动收起。
+  const [regexOpen] = useState(() => !!options.chapterPattern);
 
   function applyPattern() {
     const pattern = patternDraft.trim();
@@ -34,7 +36,7 @@ export function OptionsPanel({
       <div className="mt-4 flex flex-col gap-4">
         <CleaningStepsForm value={options} onChange={onChange} disabled={disabled} />
         <p className="text-xs text-muted-foreground">过滤词表（{options.filterWords.length} 个词）在「设置」中维护。</p>
-        <details open={!!options.chapterPattern || undefined}>
+        <details open={regexOpen || undefined}>
           <summary className="cursor-pointer text-sm font-medium">章节正则（高级）</summary>
           <div className="mt-2 flex flex-col gap-2">
             <Label htmlFor="chapter-pattern">本书的章节正则</Label>

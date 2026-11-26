@@ -43,12 +43,13 @@ const STATUS_TEXT: Record<ReviewStatus, string> = {
 };
 
 /** 每种异常的处理方式，只在选中这一类型时显示。 */
+const UNFIXABLE_HELP = "无法自动修复，也不挡住导入；多半来自原稿本身，检查无误后可以忽略。";
 const KIND_HELP: Record<ReviewKind, string> = {
   outOfOrder: "修复：把这一章连同其后的番外等无序号章节，移到同一分卷中按序号应在的位置。",
-  missing: "无法自动修复，也不挡住导入；多半来自原稿本身，检查无误后可以忽略。",
-  duplicate: "无法自动修复，也不挡住导入；多半来自原稿本身，检查无误后可以忽略。",
+  missing: UNFIXABLE_HELP,
+  duplicate: UNFIXABLE_HELP,
   sectionReset: "序号重新从 1 开始，视为新的分卷，分卷内单独检查，无需处理。",
-  aiLine: "修复即按 AI 的判断修正这一行。置信度不低于 0.8 的判断已自动修复，标为「AI」。",
+  aiLine: "修复即按 AI 的判断修正这一行；置信度不低于 0.8 的判断已自动修复，标为「AI」。",
   notice: "修复后并入上一章；忽略则保留为章节。",
 };
 

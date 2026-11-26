@@ -75,8 +75,13 @@ export function ChapterBrowser({
     }
     if (!reveal.current.pending || !reading) return;
     reveal.current.pending = false;
-    const target = articleRef.current && scrollsItself(articleRef.current) ? rootRef.current : articleRef.current;
-    target?.scrollIntoView({ block: "start" });
+    const article = articleRef.current;
+    if (!article) return;
+    // 宽屏正文自己滚动：跳到已选中的章节时 selected 不变，要在这里把正文滚回开头。
+    if (scrollsItself(article)) {
+      article.scrollTo({ top: 0 });
+      rootRef.current?.scrollIntoView({ block: "start" });
+    } else article.scrollIntoView({ block: "start" });
     headingRef.current?.focus({ preventScroll: true });
   }, [revealKey, reading]);
 
