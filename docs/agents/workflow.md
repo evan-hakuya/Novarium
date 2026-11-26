@@ -2,7 +2,7 @@
 
 Every change reaches `main` through a squash-merged PR. GitHub signs the squash commit, so `main` shows only **Verified** commits. This machine has no gpg: a local commit pushed straight to `main` is Unverified.
 
-GitHub enforces this. A ruleset on `main` requires a PR and requires the `check` and `title` jobs to pass. It also blocks force pushes and branch deletion. The repo allows squash merges only, uses the PR title as the commit subject, and deletes the branch after merge. `.github/workflows/pr-title.yml` checks that the PR title is a Conventional Commit. The ruleset does not use "require signed commits": that rule also checks the unsigned commits on the PR branch and blocks the squash merge. PR-only, squash-only merging already makes every commit on `main` GitHub-signed.
+GitHub enforces this. A ruleset on `main` requires a PR and requires the `check`, `e2e` and `title` jobs to pass. It also blocks force pushes and branch deletion. The repo allows squash merges only, uses the PR title as the commit subject, and deletes the branch after merge. `.github/workflows/pr-title.yml` checks that the PR title is a Conventional Commit. The ruleset does not use "require signed commits": that rule also checks the unsigned commits on the PR branch and blocks the squash merge. PR-only, squash-only merging already makes every commit on `main` GitHub-signed.
 
 ## Steps
 
@@ -17,7 +17,7 @@ GitHub enforces this. A ruleset on `main` requires a PR and requires the `check`
 5. **CI.** Pushing the branch and opening the PR (step 7) runs `.github/workflows/ci.yml`: install, typecheck, build, test on a clean runner. Done when `gh pr checks <branch> --watch` reports the `check` job passed. If CI is unavailable, run the same four commands in a fresh clone under `/tmp/novarium-tickets/<unique>`.
 6. **Issue.** Tick every acceptance criterion the PR satisfies: read the body, turn `- [ ]` into `- [x]`, write it back with `gh issue edit <n> --body-file`. Leave unmet ones unticked and say why in an issue comment.
 7. **PR.** Title is the Conventional Commit subject. Body uses the `pr` skill template (Summary, Evidence, Merge Danger) and ends with `Closes #N` when the issue is fully done, otherwise `Refs #N`.
-8. **Merge.** Only with CI green: `gh pr merge <branch> --squash --delete-branch`, then `git switch main && git pull && git fetch --prune`.
+8. **Merge.** Only with CI green: `gh pr merge <branch> --squash --delete-branch`, then `git switch main && git pull && git fetch --prune`. Editing the PR title or body reruns `title`, so finish edits before the last `gh pr checks --watch`.
 9. **Deploy.** `pnpm deploy:cf` (deploys the Worker, then applies D1 migrations). Check production: `/api/health` and the changed endpoints or pages.
 10. **Confirm.** `gh api 'repos/evan-hakuya/Novarium/commits?per_page=1' -q '.[0].commit.verification.verified'` prints `true`.
 
