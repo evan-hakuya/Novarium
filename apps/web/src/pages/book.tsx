@@ -6,7 +6,7 @@ import { ChapterBrowser, ChapterText } from "@/components/chapter-browser";
 import { BookMetadataPanel } from "@/components/book-metadata";
 import { STEPS } from "@/components/process-options-form";
 import { Button } from "@/components/ui/button";
-import { reviewNumbers } from "@/lib/number-review";
+import { isAdvisory, itemKind, reviewNumbers } from "@/lib/number-review";
 
 const route = getRouteApi("/owner/books/$bookId");
 
@@ -65,10 +65,12 @@ function NumberNotice({
   chapters: { order: number; title: string; number: number | null; volume: string | null }[];
   options: Partial<ProcessOptions>;
 }) {
-  const items = reviewNumbers(chapters, { numberIgnores: options.numberIgnores ?? [], numberFixes: options.numberFixes ?? [] });
-  const count = (kind: "missing" | "duplicate") =>
-    items.filter((i) => i.status === "pending" && i.anomaly.kind === kind).length;
-  const parts = [count("missing") && `${count("missing")} 处缺号`, count("duplicate") && `${count("duplicate")} 处重复编号`].filter(Boolean);
+  const advisory = reviewNumbers(chapters, { numberIgnores: options.numberIgnores ?? [], numberFixes: options.numberFixes ?? [] }).filter(
+    (i) => i.status === "pending" && isAdvisory(i),
+  );
+  const missing = advisory.filter((i) => itemKind(i) === "missing").length;
+  const duplicate = advisory.length - missing;
+  const parts = [missing > 0 && `${missing} 处缺号`, duplicate > 0 && `${duplicate} 处重复编号`].filter(Boolean);
   if (parts.length === 0) return null;
   return (
     <p className="text-sm text-amber-700 dark:text-amber-400">
