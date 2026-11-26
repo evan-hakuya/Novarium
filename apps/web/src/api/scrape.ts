@@ -1,4 +1,4 @@
-import { ApiError, describeError, request, type Released } from "./books";
+import { ApiError, describeError, request, type Released, type ScrapeSnapshot } from "./books";
 
 /** 刮削的状态（ADR 0006）。configured：已填写 DaoSearch 密钥；keyHint：密钥的前后几位。 */
 export interface ScrapeStatus {
@@ -56,6 +56,8 @@ export interface ScrapedBook extends ScrapeCandidate {
   mature: boolean | null;
   sourceUrl: string | null;
   alsoOn: { platform: string; url: string }[];
+  /** 刮削时自动整体替换，不逐项对比。 */
+  snapshot: ScrapeSnapshot;
 }
 
 export type ScrapeField =
@@ -167,6 +169,10 @@ export function scrapeFailureReason(error: unknown): string {
   }
   return describeError(error);
 }
+
+/** 是否为「刮削源上没有这部作品」。 */
+export const isScrapeNotFound = (error: unknown) =>
+  error instanceof ApiError && error.code === "scrape_unavailable" && error.kind === "not_found";
 
 export function formatWait(seconds: number): string {
   if (seconds < 60) return `${seconds} 秒`;

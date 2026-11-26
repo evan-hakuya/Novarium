@@ -5,6 +5,7 @@ import {
   type ScrapeCache,
   type ScrapeCandidate,
   type ScrapedBook,
+  type ScrapeSnapshot,
   type ScrapeErrorKind,
   type ScrapeQuota,
   type ScrapeSource,
@@ -50,6 +51,29 @@ interface DaoSearchBook extends DaoSearchResult {
   mature?: boolean;
   source_url?: string | null;
   also_on?: { source: string; url: string }[] | null;
+  metrics?: { key: string; label?: string; value: number; period?: string }[] | null;
+  rankings?:
+    | { board_label: string; board_zh: string | null; channel_label: string | null; channel_zh: string | null; position: number; url: string }[]
+    | null;
+  source_rating_count?: number | null;
+  source_comment_count?: number | null;
+  booklist_count?: number | null;
+  pace?: { chapters_per_week: number; paused: boolean; days: number } | null;
+  availability?: { state: string; since: string | null } | null;
+  refreshed_at?: string | null;
+}
+
+/** /sources 里每个平台的说明，只用到数据项的中文名与评分满分。 */
+interface DaoSearchSourceInfo {
+  source: string;
+  score_scale: number | null;
+  metrics: { key: string; zh: string | null }[];
+}
+
+/** 一个平台的数据项中文名与评分满分。 */
+interface PlatformInfo {
+  metricNames: Map<string, string>;
+  scoreScale: number | null;
 }
 
 interface DaoSearchLimits {
@@ -84,7 +108,30 @@ function toCandidate(item: DaoSearchResult): ScrapeCandidate {
   };
 }
 
-function toBook(book: DaoSearchBook): ScrapedBook {
+const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
+function toSnapshot(book: DaoSearchBook, info: PlatformInfo | null): ScrapeSnapshot {
+  return {
+    metrics: (book.metrics ?? [])
+      .filter((m) => m.key && count(m.value) !== null)
+      .map((m) => ({ key: m.key, label: info?.metricNames.get(m.key) ?? m.label ?? m.key, value: m.value, period: m.period ?? null })),
+    scoreScale: info?.scoreScale ?? null,
+    rankings: (book.rankings ?? []).flatMap((r) => {
+      const url = https(r.url);
+      return url && count(r.position) !== null
+        ? [{ label: r.board_zh ?? r.board_label, channel: r.channel_zh ?? r.channel_label, position: r.position, url }]
+        : [];
+    }),
+    ratingCount: count(book.source_rating_count),
+    commentCount: count(book.source_comment_count),
+    booklistCount: count(book.booklist_count),
+    pace: book.pace ? { chaptersPerWeek: book.pace.chapters_per_week, paused: !!book.pace.paused, days: book.pace.days } : null,
+    availability: book.availability?.state ? { state: book.availability.state, since: book.availability.since ?? null } : null,
+    refreshedAt: book.refreshed_at ?? null,
+  };
+}
+
+function toBook(book: DaoSearchBook, info: PlatformInfo | null): ScrapedBook {
   const title = zh(book.title);
   const aliases: string[] = [];
   for (const raw of [...(book.other_names ?? []).map((n) => n.name ?? n.name_translated), book.title?.en]) {
@@ -112,6 +159,7 @@ function toBook(book: DaoSearchBook): ScrapedBook {
       const url = https(e.url);
       return url && e.source ? [{ platform: e.source, url }] : [];
     }),
+    snapshot: toSnapshot(book, info),
   };
 }
 
@@ -193,6 +241,23 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
     return result.data;
   }
 
+  /**
+   * 数据项的中文名来自 /sources（1 点，缓存 6 小时，过期后 304 不扣点）。
+   * 读取失败时不影响刮削，快照里改用作品响应给出的英文名。
+   */
+  async function platformInfo(source: string): Promise<PlatformInfo | null> {
+    try {
+      const sources = await getCached<DaoSearchSourceInfo[]>("/sources", Array.isArray);
+      const found = sources.find((s) => s.source === source);
+      if (!found) return null;
+      const metricNames = new Map<string, string>();
+      for (const m of found.metrics ?? []) if (m.key && m.zh) metricNames.set(m.key, m.zh);
+      return { metricNames, scoreScale: count(found.score_scale) };
+    } catch {
+      return null;
+    }
+  }
+
   return {
     id: "daosearch",
     async search(query) {
@@ -203,7 +268,8 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
     async getBook(ref) {
       const { platform, id } = parseRef(ref);
       const isBook = (data: unknown) => !!data && typeof data === "object" && "source_book_id" in data;
-      return toBook(await getCached<DaoSearchBook>(`/books/${platform}/${encodeURIComponent(id)}`, isBook));
+      const book = await getCached<DaoSearchBook>(`/books/${platform}/${encodeURIComponent(id)}`, isBook);
+      return toBook(book, await platformInfo(book.source));
     },
     async check(): Promise<ScrapeQuota> {
       const limits = await get<DaoSearchLimits>("/limits/me");

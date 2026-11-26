@@ -51,7 +51,32 @@ const book = {
     { source: "zongheng", source_book_id: "1", url: "https://daosearch.io/zongheng/book/1/x" },
     { source: "qimao", source_book_id: "2", url: "javascript:alert(1)" },
   ],
+  metrics: [
+    { key: "monthly_votes", label: "Monthly votes", value: 56850, period: "month" },
+    { key: "fans", label: "Fans", value: 38046989, period: "all_time" },
+    { key: "unknown_figure", label: "Unknown", value: 7 },
+  ],
+  rankings: [
+    { board: "yuepiao", board_label: "Monthly Votes", board_zh: "月票榜", channel: "overall", channel_label: null, channel_zh: null, position: 3, url: "https://daosearch.io/qidian/rankings" },
+    { board: "x", board_label: "Hot", board_zh: null, channel: "male", channel_label: "Male", channel_zh: null, position: 9, url: "https://daosearch.io/qidian/rankings?x" },
+  ],
+  source_rating_count: null,
+  source_comment_count: 174287,
+  booklist_count: 5982,
+  pace: { chapters_per_week: 10.5, paused: false, days: 90 },
+  availability: { state: "available", since: null },
+  refreshed_at: "2026-11-24T10:25:11Z",
 };
+
+/** /sources 的响应：数据项的中文名与评分满分。 */
+const sources = [
+  { source: "qidian", score_scale: null, metrics: [{ key: "monthly_votes", zh: "月票" }, { key: "fans", zh: "粉丝" }, { key: "x", zh: null }] },
+  { source: "fanqie", score_scale: 10, metrics: [{ key: "score", zh: "评分" }] },
+];
+
+/** 让 /sources 返回上面的响应，其余请求交给 respond。 */
+const withSources = (respond: (url: string) => Response | Promise<Response>) => (url: string) =>
+  new URL(url).pathname.endsWith("/sources") ? json(200, { data: sources }) : respond(url);
 
 const scraped = {
   ref: "qidian/1010868264",
@@ -74,6 +99,24 @@ const scraped = {
   mature: false,
   sourceUrl: "https://www.qidian.com/book/1010868264/",
   alsoOn: [{ platform: "zongheng", url: "https://daosearch.io/zongheng/book/1/x" }],
+  snapshot: {
+    metrics: [
+      { key: "monthly_votes", label: "月票", value: 56850, period: "month" },
+      { key: "fans", label: "粉丝", value: 38046989, period: "all_time" },
+      { key: "unknown_figure", label: "Unknown", value: 7, period: null },
+    ],
+    scoreScale: null,
+    rankings: [
+      { label: "月票榜", channel: null, position: 3, url: "https://daosearch.io/qidian/rankings" },
+      { label: "Hot", channel: "Male", position: 9, url: "https://daosearch.io/qidian/rankings?x" },
+    ],
+    ratingCount: null,
+    commentCount: 174287,
+    booklistCount: 5982,
+    pace: { chaptersPerWeek: 10.5, paused: false, days: 90 },
+    availability: { state: "available", since: null },
+    refreshedAt: "2026-11-24T10:25:11Z",
+  },
 };
 
 async function scrapeError(promise: Promise<unknown>) {
@@ -115,10 +158,34 @@ describe("DaoSearch 刮削源", () => {
   });
 
   it("按 ID 读取作品，取中文的书名、作者、简介与标签", async () => {
-    const { calls, doFetch } = fakeFetch(() => json(200, { data: book }));
+    const { calls, doFetch } = fakeFetch(withSources(() => json(200, { data: book })));
     const result = await createDaoSearchSource(KEY, doFetch).getBook("qidian/1010868264");
     expect(calls[0]!.url).toBe(`${DAOSEARCH_BASE}/books/qidian/1010868264`);
     expect(result).toEqual(scraped);
+  });
+
+  it("快照：数据项用平台的中文名；/sources 读取失败时用英文名，刮削不受影响", async () => {
+    const { doFetch } = fakeFetch((url) => (new URL(url).pathname.endsWith("/sources") ? apiError(503, "api_disabled") : json(200, { data: book })));
+    const result = await createDaoSearchSource(KEY, doFetch).getBook("qidian/1010868264");
+    expect(result.snapshot.metrics.map((m) => m.label)).toEqual(["Monthly votes", "Fans", "Unknown"]);
+    expect(result.title).toBe("诡秘之主");
+  });
+
+  it("快照：带上评分满分；没有快照数据的作品得到空快照", async () => {
+    const bare = { ...book, source: "fanqie", metrics: [{ key: "score", label: "Score", value: 8.6 }] } as Record<string, unknown>;
+    for (const key of ["rankings", "source_comment_count", "booklist_count", "pace", "availability", "refreshed_at"]) delete bare[key];
+    const { doFetch } = fakeFetch(withSources(() => json(200, { data: bare })));
+    expect((await createDaoSearchSource(KEY, doFetch).getBook("fanqie/1")).snapshot).toEqual({
+      metrics: [{ key: "score", label: "评分", value: 8.6, period: null }],
+      scoreScale: 10,
+      rankings: [],
+      ratingCount: null,
+      commentCount: null,
+      booklistCount: null,
+      pace: null,
+      availability: null,
+      refreshedAt: null,
+    });
   });
 
   it("拒绝格式不对的作品 ID，不发请求", async () => {
@@ -183,12 +250,13 @@ describe("DaoSearch 响应缓存", () => {
 
   it("缓存未过期时不发请求", async () => {
     const mem = memoryCache();
-    const { calls, doFetch } = fakeFetch(() => json(200, { data: book }, { etag: '"v1"' }));
+    const { calls, doFetch } = fakeFetch(withSources(() => json(200, { data: book }, { etag: '"v1"' })));
     const source = createDaoSearchSource(KEY, doFetch, { cache: mem.cache, now: mem.now });
     expect(await source.getBook(scraped.ref)).toEqual(scraped);
     mem.advance(DAOSEARCH_CACHE_MS - 1);
     expect(await source.getBook(scraped.ref)).toEqual(scraped);
-    expect(calls).toHaveLength(1);
+    // 作品与 /sources 各请求一次。
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([`/api/v1${PATH}`, "/api/v1/sources"]);
     expect(mem.rows.get(PATH)?.etag).toBe('"v1"');
     expect(mem.rows.get(PATH)?.usedAt).toBe(mem.now());
   });
@@ -196,13 +264,16 @@ describe("DaoSearch 响应缓存", () => {
   it("过期后带 ETag 重新验证，304 时继续用缓存并刷新取得时间", async () => {
     const mem = memoryCache();
     let status = 200;
-    const { calls, doFetch } = fakeFetch(() => (status === 304 ? new Response(null, { status: 304 }) : json(200, { data: book }, { etag: '"v1"' })));
+    const { calls, doFetch } = fakeFetch(
+      withSources(() => (status === 304 ? new Response(null, { status: 304 }) : json(200, { data: book }, { etag: '"v1"' }))),
+    );
     const source = createDaoSearchSource(KEY, doFetch, { cache: mem.cache, now: mem.now });
     await source.getBook(scraped.ref);
     status = 304;
     mem.advance(DAOSEARCH_CACHE_MS);
     expect(await source.getBook(scraped.ref)).toEqual(scraped);
-    expect(calls[1]!.headers.get("if-none-match")).toBe('"v1"');
+    const revalidation = calls.filter((c) => c.url.endsWith(PATH))[1]!;
+    expect(revalidation.headers.get("if-none-match")).toBe('"v1"');
     expect(mem.rows.get(PATH)?.fetchedAt).toBe(mem.now());
   });
 

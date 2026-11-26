@@ -24,8 +24,11 @@
 | `GET /limits/me` | 设置页「测试连接」，显示当天剩余点数 | 0 |
 | `GET /search?q=<书名或链接>&limit=10` | 刮削对话框的候选列表。`q` 也接受 DaoSearch 或源站的书页链接。只返回书名、作者、封面 | 5 |
 | `GET /books/{source}/{source_book_id}` | 点击候选后读取详情；再次刮削按已保存的 ID 读取。ID 合并时返回 301 | 1 |
+| `GET /sources` | 快照里数据项的中文名（`metrics[].zh`）与评分满分（`score_scale`）。读取失败时改用作品响应里的英文名，不影响刮削 | 1 |
 
-一次刮削约 6 点：搜索 5 点，查看一个候选的详情 1 点。写入前服务端按作品 ID 重新读取，命中缓存，不扣点。搜索后不批量读取候选详情。
+一次刮削约 6 点：搜索 5 点，查看一个候选的详情 1 点。写入前服务端按作品 ID 重新读取，命中缓存，不扣点。搜索后不批量读取候选详情。`/sources` 与其他响应一起缓存，6 小时内最多 1 点。
+
+再次刮削（#43）：已刮削过的书直接按保存的 `scrapeRef` 读取作品（1 点），不搜索；对话框里有「重新搜索」可以换成另一部作品。ID 合并时 fetch 跟随 301，写入时 `scrapeRef` 更新为响应里的新 ID。作品不存在（404）时提示所有者，书的数据与快照不变。
 
 缓存：搜索与作品响应按请求路径存在 `scrape_cache` 表。6 小时内（与 `x-cache-seconds` 一致）直接用缓存；过期后带 `If-None-Match` 重新验证，304 不扣点。请求出错时不写缓存。30 天没有使用的缓存由定时清理删除。浏览器内另有 30 分钟的查询缓存。
 
@@ -38,7 +41,7 @@
 | `title.zh` `author.zh` `synopsis_zh` `tags[].zh` `cover_url` | 写入书名、作者、简介、标签（合并）、封面（下载后存入自己的存储） |
 | `genre.zh` `subgenre.zh` `status` `word_count` `released` `updated_at` `other_names` `title.en` `author.en` `facets` `mature` `source_url` `also_on` | 描述字段（#42），存在 `books` 表。别名取 `other_names[].name`（没有中文时取 `name_translated`）与 `title.en`，合并进现有别名。`facets` 保存 `key`、`label`、`value_label`，后台按 `key` 显示中文名称，未知的 `key` 显示 `label`。`source_url` 与 `also_on[].url` 只接受 https。分类、子分类、连载状态与别名可由所有者编辑。书源的 `kind` 为「分类,子分类,标签」，`wordCount` 取 `word_count`，搜索也匹配别名 |
 | `source` `source_book_id` `url` | 刮削来源 ID 与署名链接 |
-| `metrics` `rankings` `source_rating_count` `source_comment_count` `booklist_count` `pace` `availability` `refreshed_at` | 快照 |
+| `metrics` `rankings` `source_rating_count` `source_comment_count` `booklist_count` `pace` `availability` `refreshed_at` | 快照（#43），存在 `books.snapshot`，每次刮削整体替换，不需要勾选。`metrics` 保留 `key`、`value`、`period`，名称取 `/sources` 的中文名；`rankings` 取 `board_zh`、`channel_zh`（没有时取英文名）与 `position`、`url`。后台按平台给出的名称显示，注明刮削日期，不跨平台比较 |
 | `latest_chapter(_en)` `chapter_count` `synopsis_en` `english_translation` `licences` `translated_by` `*_url` | 不用 |
 
 ## 条款要点

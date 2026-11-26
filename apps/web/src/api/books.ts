@@ -20,6 +20,20 @@ export interface Released {
   estimated: boolean;
 }
 
+/** 快照：源站自己的数据，按平台给出的名称与周期保存，不跨平台换算。与服务端的 ScrapeSnapshot 一致。 */
+export interface ScrapeSnapshot {
+  metrics: { key: string; label: string; value: number; period: string | null }[];
+  /** 评分满分，只用于 key 为 score 的数据项。 */
+  scoreScale: number | null;
+  rankings: { label: string; channel: string | null; position: number; url: string }[];
+  ratingCount: number | null;
+  commentCount: number | null;
+  booklistCount: number | null;
+  pace: { chaptersPerWeek: number; paused: boolean; days: number } | null;
+  availability: { state: string; since: string | null } | null;
+  refreshedAt: string | null;
+}
+
 /** 描述字段（#42）。分类、子分类、连载状态与别名可以编辑；其余只读，刮削时写入。没有刮削过时为空。 */
 export interface BookDescription {
   genre: string | null;
@@ -63,8 +77,12 @@ export interface BookDetail {
     originalSize: number;
     /** 刮削来源（ADR 0006）。没有刮削过时为 null。 */
     scrapeSource: string | null;
+    /** 刮削源中的作品 ID，例如 qidian/1010868264。再次刮削时直接按它读取。 */
+    scrapeRef: string | null;
     scrapeUrl: string | null;
     scrapedAt: string | null;
+    /** 快照（#43）：刮削时的平台数据，日期取 scrapedAt。 */
+    snapshot: ScrapeSnapshot | null;
   };
   /** 当前版本。options 是生成它的整理选项。 */
   version: { id: string; options: ProcessOptions; createdAt: string };
