@@ -12,7 +12,16 @@ import {
   unignoreAiLines,
   type AiReviewItem,
 } from "@/lib/ai-review";
-import { ANOMALY_KINDS, canFix, isAiItem, itemKind, type ReviewItem, type ReviewKind, type ReviewStatus } from "@/lib/number-review";
+import {
+  ANOMALY_KINDS,
+  canFix,
+  countPending,
+  isAiItem,
+  itemKind,
+  type ReviewItem,
+  type ReviewKind,
+  type ReviewStatus,
+} from "@/lib/number-review";
 import { cn } from "@/lib/utils";
 
 type Tab = ReviewStatus | "all";
@@ -143,7 +152,7 @@ export function NumberReviewPanel({
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border p-4 text-sm">
-      {header(counts.pending > 0 ? `${counts.pending} 处待处理，处理完才能继续` : "已全部处理")}
+      {header(pendingSummary(countPending(items), counts.pending))}
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-w-0">
         <TabsList className={TAB_ROW}>
           {TABS.map((t) => (
@@ -273,11 +282,20 @@ export function NumberReviewPanel({
         </ul>
       )}
       <p className="text-xs text-muted-foreground">
-        修复乱序：把章节连同其后的番外等无序号章节，移到同一分卷中按序号应在的位置。缺号与重复编号无法自动修复，请检查原稿或章节正则后忽略。
+        修复乱序：把章节连同其后的番外等无序号章节，移到同一分卷中按序号应在的位置。缺号与重复编号无法自动修复，也不挡住导入；多半来自原稿本身，检查无误后可以忽略。
         AI 复核：修复即按 AI 的判断修正这一行；作者公告修复后并入上一章，忽略则保留为章节。置信度不低于 0.8 的判断已自动修复，标为「AI」。
       </p>
     </section>
   );
+}
+
+/** 面板标题：先说挡住继续的条数，再说只需检查的缺号与重复编号。 */
+function pendingSummary(blocking: number, pending: number): string {
+  const advisory = pending - blocking;
+  if (pending === 0) return "已全部处理";
+  const check = advisory > 0 ? `${advisory} 处缺号或重复编号待检查，不影响继续` : "";
+  if (blocking === 0) return check;
+  return `${blocking} 处待处理，处理完才能继续${check && `；另有 ${check}`}`;
 }
 
 function ItemText({ item, jump }: { item: ReviewItem; jump: (order: number) => ReactNode }) {

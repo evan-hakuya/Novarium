@@ -22,6 +22,7 @@ export {
   parseOutOfOrderKey,
   type NumberAnomaly,
   type NumberAnomalyKind,
+  type NumberedChapter,
 } from "./numbering";
 export { validateChapterIndex, MAX_CHAPTERS } from "./validate";
 export { formatWordCount } from "./word-count";
