@@ -41,20 +41,25 @@ export class ApiError extends Error {
   readonly details?: string[];
   /** AI 失败的类型（ai_unavailable 时有值）。 */
   readonly kind?: string;
+  /** 外部服务要求等待的秒数（刮削限流）。 */
+  readonly retryAfterSeconds?: number;
 
-  constructor(status: number, code: string, details?: string[], kind?: string) {
+  constructor(status: number, code: string, details?: string[], kind?: string, retryAfterSeconds?: number) {
     super(code);
     this.status = status;
     this.code = code;
     this.details = details;
     this.kind = kind;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
-  const body = (await res.json().catch(() => null)) as ({ error?: string; details?: string[]; kind?: string } & T) | null;
-  if (!res.ok) throw new ApiError(res.status, body?.error ?? `http_${res.status}`, body?.details, body?.kind);
+  const body = (await res.json().catch(() => null)) as
+    | ({ error?: string; details?: string[]; kind?: string; retryAfterSeconds?: number } & T)
+    | null;
+  if (!res.ok) throw new ApiError(res.status, body?.error ?? `http_${res.status}`, body?.details, body?.kind, body?.retryAfterSeconds);
   return body as T;
 }
 
@@ -199,6 +204,7 @@ const errorText: Record<string, string> = {
   unsupported_image: "封面只支持 JPEG、PNG、GIF 或 WebP 图片。",
   cover_too_large: "封面不能超过 5 MB。",
   invalid_name: "名称不能为空，且不能超过 50 字。",
+  invalid_key: "密钥不能为空，不能含空格，且不能超过 200 字。",
   token_revoked: "这个访问令牌已撤销。",
   token_not_viewable: "这个访问令牌创建时没有保存明文，无法再次查看书源。",
   unauthorized: "登录已失效，请重新登录。",
