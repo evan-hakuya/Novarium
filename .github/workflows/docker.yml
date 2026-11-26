@@ -1,6 +1,7 @@
 name: Docker
 
 # 把自部署镜像发布到 GHCR：main 的每次提交发布 latest 与 sha-<短哈希>，v* 标签发布对应版本号。
+# PR 改动镜像内容时只构建 amd64 并启动容器做冒烟检查，不推送。
 on:
   push:
     branches: [main]
@@ -10,6 +11,12 @@ on:
       - Dockerfile
       - .dockerignore
       - .github/workflows/docker.yml
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
+      - apps/**
+      - packages/**
 
 concurrency:
   group: docker-${{ github.ref }}
@@ -26,6 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@v4
+        if: github.event_name != 'pull_request'
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         if: github.event_name != 'pull_request'
@@ -42,13 +50,34 @@ jobs:
             type=sha
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-      # PR 中只构建、不推送，用来检查 Dockerfile 的改动。
       - uses: docker/build-push-action@v7
+        if: github.event_name != 'pull_request'
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # PR：只构建 amd64，加载到本机，不推送。load 不支持多平台，所以和上面分成两步。
+      - uses: docker/build-push-action@v7
+        if: github.event_name == 'pull_request'
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: novarium:pr
+          cache-from: type=gha
+      - name: Smoke test the image
+        if: github.event_name == 'pull_request'
+        run: |
+          docker run -d --name novarium -p 8080:8080 -e OWNER_PASSWORD=ci-smoke novarium:pr
+          for i in $(seq 30); do
+            if curl -sf http://localhost:8080/api/health | grep -q '"ok":true'; then break; fi
+            if [ "$i" -eq 30 ]; then echo "::error::/api/health did not become ok"; docker logs novarium; exit 1; fi
+            sleep 1
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)
+          [ "$code" = 200 ] || { echo "::error::/ returned $code, expected 200"; docker logs novarium; exit 1; }
+          echo "health and web app OK"
