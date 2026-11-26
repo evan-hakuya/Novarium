@@ -12,6 +12,10 @@ Default canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `read
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+### Grilling
+
+Append each decision to `/tmp/novarium-tickets/grill-<topic>.md` the moment the owner confirms it (question number, decision, the owner's words); after a context compaction, read that file before asking the next question. When grilling ends, record the decisions in ADRs, `GLOSSARY.md` and issues as usual.
+
 ### Book source debugging
 
 Debug and accept Legado book sources against the local reader container. Verify on a phone only when the owner asks. See `docs/agents/book-source-debugging.md`.
