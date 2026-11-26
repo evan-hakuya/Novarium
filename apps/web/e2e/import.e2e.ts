@@ -21,6 +21,10 @@ test("imports a large manuscript", async ({ page }) => {
   });
   await expect(page.getByText(`${CHAPTERS} 章 · 整理后`)).toBeVisible({ timeout: 60_000 });
 
+  await test.step("no scrape button without a DaoSearch key", async () => {
+    await expect(page.getByRole("button", { name: "刮削", exact: true })).toHaveCount(0);
+  });
+
   await test.step("book chapter pattern stays within budget", async () => {
     await page.getByText("整理选项").click();
     await page.locator("#chapter-pattern").fill("^个人番外");

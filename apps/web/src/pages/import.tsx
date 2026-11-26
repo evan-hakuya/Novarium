@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ProcessOptions } from "@novarium/core";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -13,10 +13,20 @@ import {
   type DuplicateBook,
 } from "@/api/books";
 import { fetchDefaultProcessOptions, processOptionsQueryKey } from "@/api/settings";
+import {
+  applyScrape,
+  fetchScrapeStatus,
+  platformName,
+  scrapeFailureReason,
+  scrapeStatusQueryKey,
+  type ScrapedBook,
+  type ScrapeField,
+} from "@/api/scrape";
 import { SuggestionLine, useAiMetadata } from "@/components/ai-metadata";
 import { AiReviewToolbar } from "@/components/ai-review-toolbar";
 import { OptionsPanel } from "@/components/options-panel";
 import { PreviewBrowser } from "@/components/preview-browser";
+import { ScrapeDialog, type ScrapeApply } from "@/components/scrape-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +43,14 @@ interface Source {
 
 const stepText = { original: "上传原稿", text: "上传整理后的正文", index: "保存章节索引" } as const;
 
+/** 导入页选定的刮削结果。fields 只含导入成功后才能写入的标签与封面。 */
+interface ScrapePick {
+  scraped: ScrapedBook;
+  fields: ScrapeField[];
+}
+
+const lateFieldText: Partial<Record<ScrapeField, string>> = { tags: "标签", cover: "封面" };
+
 export function ImportPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -47,12 +65,20 @@ export function ImportPage() {
   const review = useAiReview({ bytes: source?.bytes ?? null, preview, processing, onChangeOptions: rerun });
   // 书库中同名同作者的书；不为 null 时等待所有者选择导入方式。
   const [duplicates, setDuplicates] = useState<DuplicateBook[] | null>(null);
+  // 没有填写刮削源密钥时不显示刮削入口。
+  const scrapeStatus = useQuery({ queryKey: scrapeStatusQueryKey, queryFn: fetchScrapeStatus, staleTime: 60_000 });
+  const [scraping, setScraping] = useState(false);
+  const [scrapePick, setScrapePick] = useState<ScrapePick | null>(null);
+  // 书已导入、但写入刮削的标签或封面失败时，显示原因与书的链接。
+  const [scrapeFailure, setScrapeFailure] = useState<{ bookId: string; reason: string } | null>(null);
 
   async function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     reset();
     setSource(null);
+    setScrapePick(null);
+    setScrapeFailure(null);
     if (file.size > MAX_UPLOAD_BYTES) {
       setError(`文件大小为 ${formatBytes(file.size)}，超过 100 MB 上限。`);
       return;
@@ -101,6 +127,19 @@ export function ImportPage() {
       );
       await review.clearCache();
       await queryClient.invalidateQueries({ queryKey: booksQueryKey });
+      if (scrapePick) {
+        // 读取作品走服务端缓存，不额外消耗点数。失败时书照常导入。
+        try {
+          await applyScrape(id, scrapePick.scraped.ref, scrapePick.fields);
+          await queryClient.invalidateQueries({ queryKey: booksQueryKey });
+        } catch (e) {
+          reset();
+          setSource(null);
+          setScrapePick(null);
+          setScrapeFailure({ bookId: id, reason: scrapeFailureReason(e) });
+          return;
+        }
+      }
       await navigate({ to: "/books/$bookId", params: { bookId: id } });
     } catch (e) {
       setError(describeError(e));
@@ -133,6 +172,16 @@ export function ImportPage() {
   }
 
   const uploading = uploadStep !== null;
+
+  /** 对比页确认后：书名、作者、简介写进表单；标签与封面记下，导入成功后写入。 */
+  const onScrapeApply: ScrapeApply = async (scraped, fields) => {
+    const chosen = new Set(fields);
+    if (chosen.has("title") && scraped.title?.trim()) setTitle(scraped.title.trim());
+    if (chosen.has("author") && scraped.author?.trim()) setAuthor(scraped.author.trim());
+    if (chosen.has("intro") && scraped.intro?.trim()) setIntro(scraped.intro.trim());
+    setScrapePick({ scraped, fields: fields.filter((f) => f in lateFieldText) });
+  };
+  const scrapeConfigured = !!scrapeStatus.data?.configured;
   const busy = processing || uploading;
   const version = preview?.version;
   const pending = useMemo(
@@ -166,6 +215,15 @@ export function ImportPage() {
       {processing && <p className="text-sm text-muted-foreground">整理中：{source?.file.name}</p>}
       {uploadStep && <p className="text-sm text-muted-foreground">{uploadStep}</p>}
       {error && <p className="whitespace-pre-wrap text-sm text-destructive">{error}</p>}
+      {scrapeFailure && (
+        <p className="text-sm text-destructive">
+          书已导入，但写入刮削的标签或封面失败：{scrapeFailure.reason}。请到
+          <Link to="/books/$bookId" params={{ bookId: scrapeFailure.bookId }} className="underline">
+            书详情页
+          </Link>
+          重新刮削。
+        </p>
+      )}
 
       {options && source && (
         <OptionsPanel
@@ -178,11 +236,18 @@ export function ImportPage() {
 
       {version && (
         <>
-          {ai.available && (
+          {(ai.available || scrapeConfigured) && (
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Button size="sm" variant="outline" disabled={busy || ai.pending} onClick={ai.run}>
-                {ai.pending ? "AI 识别中…" : "AI 识别元数据"}
-              </Button>
+              {scrapeConfigured && (
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => setScraping(true)}>
+                  刮削
+                </Button>
+              )}
+              {ai.available && (
+                <Button size="sm" variant="outline" disabled={busy || ai.pending} onClick={ai.run}>
+                  {ai.pending ? "AI 识别中…" : "AI 识别元数据"}
+                </Button>
+              )}
               {hasNewSuggestion && (
                 <Button size="sm" variant="ghost" disabled={uploading} onClick={adoptAll}>
                   全部采用
@@ -191,6 +256,28 @@ export function ImportPage() {
               {ai.empty && <span className="text-muted-foreground">AI 没有在原稿开头找到书名、作者或简介。</span>}
               {ai.error && <span className="text-destructive">{ai.error}</span>}
             </div>
+          )}
+          {scrapePick && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+              <span>
+                刮削来源：
+                <a className="underline" href={scrapePick.scraped.url} target="_blank" rel="noreferrer">
+                  《{scrapePick.scraped.title ?? "（无书名）"}》{platformName(scrapePick.scraped.platform)} · DaoSearch
+                </a>
+                {scrapePick.fields.length > 0 && `。导入后写入${scrapePick.fields.map((f) => lateFieldText[f]).join("、")}`}
+              </span>
+              <Button size="sm" variant="ghost" disabled={uploading} onClick={() => setScrapePick(null)}>
+                取消刮削
+              </Button>
+            </div>
+          )}
+          {scrapeConfigured && (
+            <ScrapeDialog
+              target={{ title, author, intro, tags: [], coverUrl: null }}
+              onApply={onScrapeApply}
+              open={scraping}
+              onOpenChange={setScraping}
+            />
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
