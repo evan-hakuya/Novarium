@@ -12,6 +12,8 @@ export interface ChapterItem {
 
 /**
  * 左侧章节列表、右侧章节正文。正文由调用方按章节渲染。
+ * 窄屏（md 以下）只显示一栏：先显示列表，选中章节后显示正文，「← 章节列表」返回。
+ * 窄屏正文由页面滚动；列表限高，几百章时不把后面的内容推出页面。
  * 章节有所属卷时，列表在每卷第一章前显示不可点击的卷名。
  * 传入 selected 与 onSelect 时由调用方控制当前章节；flagged 中的章节在列表中标出。
  */
@@ -34,20 +36,31 @@ export function ChapterBrowser({
   const current = chapters[selected];
   const listRef = useRef<HTMLOListElement>(null);
   const articleRef = useRef<HTMLElement>(null);
+  // 窄屏当前显示正文还是列表；宽屏两栏都显示，不受它影响。
+  const [reading, setReading] = useState(false);
+  const shown = useRef({ selected, reading });
 
-  // 由外部跳转到某一章时，把它滚动到列表可见范围内。
+  // 换章（含外部跳转）：正文从头开始，列表滚到这一章，窄屏切到正文。首次渲染不滚动，避免页面跳动。
   useEffect(() => {
+    if (shown.current.selected === selected) return;
+    shown.current.selected = selected;
     listRef.current?.querySelector(`[data-order="${selected}"]`)?.scrollIntoView({ block: "nearest" });
+    articleRef.current?.scrollTo({ top: 0 });
+    setReading(true);
   }, [selected]);
 
-  // 换章后正文从头开始显示。
+  // 窄屏切换栏后，把页面滚到正文开头，或滚回列表中的当前章。
   useEffect(() => {
-    articleRef.current?.scrollTo({ top: 0 });
-  }, [selected]);
+    if (shown.current.reading === reading) return;
+    shown.current.reading = reading;
+    if (window.matchMedia("(min-width: 48rem)").matches) return;
+    if (reading) articleRef.current?.scrollIntoView({ block: "start" });
+    else listRef.current?.querySelector(`[data-order="${selected}"]`)?.scrollIntoView({ block: "center" });
+  }, [reading, selected]);
 
   return (
-    <div className="grid h-[70svh] grid-cols-[minmax(10rem,16rem)_1fr] overflow-hidden rounded-xl border">
-      <ol ref={listRef} className="overflow-y-auto border-r py-2 text-sm">
+    <div className="rounded-xl border md:grid md:h-[70svh] md:grid-cols-[minmax(10rem,16rem)_1fr] md:overflow-hidden">
+      <ol ref={listRef} className={cn("max-h-[60svh] overflow-y-auto py-2 text-sm md:max-h-none md:border-r", reading && "max-md:hidden")}>
         {chapters.map((c, i) => (
           <li key={c.order}>
             {c.volume && c.volume !== chapters[i - 1]?.volume && (
@@ -62,9 +75,12 @@ export function ChapterBrowser({
             <button
               type="button"
               data-order={c.order}
-              onClick={() => select(c.order)}
+              onClick={() => {
+                select(c.order);
+                setReading(true);
+              }}
               className={cn(
-                "flex w-full items-baseline justify-between gap-2 px-3 py-1.5 text-left hover:bg-muted",
+                "flex w-full items-baseline justify-between gap-2 px-3 py-1.5 text-left hover:bg-muted pointer-coarse:py-3",
                 c.order === selected && "bg-muted font-medium",
                 flagged?.has(c.order) && "text-amber-700 dark:text-amber-400",
               )}
@@ -78,7 +94,14 @@ export function ChapterBrowser({
           </li>
         ))}
       </ol>
-      <article ref={articleRef} data-chapter-scroll className="overflow-y-auto px-6 pt-6">
+      <article
+        ref={articleRef}
+        data-chapter-scroll
+        className={cn("scroll-mt-4 px-4 pt-4 md:overflow-y-auto md:px-6 md:pt-6", !reading && "max-md:hidden")}
+      >
+        <Button variant="ghost" size="sm" className="-ml-2 mb-2 pointer-coarse:h-11 md:hidden" onClick={() => setReading(false)}>
+          ← 章节列表
+        </Button>
         {current && (
           <>
             <h2 className="mb-4 font-heading text-lg font-semibold">{current.title}</h2>
@@ -117,14 +140,17 @@ export function ChapterText({ text }: { text: string }) {
   const pages = starts.length;
   const go = (p: number) => {
     setPage(p);
-    topRef.current?.closest("[data-chapter-scroll]")?.scrollTo({ top: 0 });
+    // 宽屏正文区域自己滚动；窄屏由页面滚动，滚回正文开头。
+    const scroller = topRef.current?.closest("[data-chapter-scroll]");
+    if (scroller && scroller.scrollHeight > scroller.clientHeight) scroller.scrollTo({ top: 0 });
+    else scroller?.scrollIntoView({ block: "start" });
   };
 
   return (
     <div ref={topRef}>
       <div className="whitespace-pre-wrap pb-6 leading-8">{body}</div>
       {/* 固定在正文区域底部的工具栏，滚动到任何位置都能翻页。 */}
-      <div className="sticky bottom-0 -mx-6 flex items-center justify-between gap-2 border-t bg-background/95 px-6 py-2 text-sm text-muted-foreground backdrop-blur">
+      <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-2 border-t bg-background/95 px-4 py-2 text-sm text-muted-foreground backdrop-blur md:-mx-6 md:px-6">
         <span>本章 {text.length.toLocaleString()} 字</span>
         {pages > 1 && (
           <div className="flex items-center gap-2">

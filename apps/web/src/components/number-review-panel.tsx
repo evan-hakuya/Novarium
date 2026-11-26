@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import type { ProcessOptions } from "@novarium/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,11 @@ const STATUS_TEXT: Record<ReviewStatus, string> = {
 /** 一次最多渲染的条数；全选与批量操作仍作用于标签页中的全部异常。 */
 const MAX_RENDERED = 300;
 
+/** 标签行放不下时横向滚动，不撑宽页面。 */
+const TAB_ROW = "max-w-full justify-start overflow-x-auto pointer-coarse:h-11!";
+/** 触屏上行内按钮的可点区域不小于 44px。 */
+const TOUCH = "pointer-coarse:h-11 pointer-coarse:px-3";
+
 const without = (list: string[], keys: ReadonlySet<string>) => list.filter((k) => !keys.has(k));
 const union = (list: string[], keys: Iterable<string>) => [...new Set([...list, ...keys])];
 
@@ -71,6 +76,7 @@ export function NumberReviewPanel({
   const [tab, setTab] = useState<Tab>(counts.pending > 0 ? "pending" : "all");
   const [kind, setKind] = useState<KindTab>("all");
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const rowId = useId();
   // 第一行按处理状态筛选，第二行在其中按异常类型筛选。
   const inStatus = useMemo(() => (tab === "all" ? items : items.filter((i) => i.status === tab)), [items, tab]);
   const kindCounts = useMemo(() => {
@@ -130,7 +136,7 @@ export function NumberReviewPanel({
   const allChecked = visible.length > 0 && selected.length === visible.length;
 
   const jump = (order: number) => (
-    <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => onJump(order)}>
+    <button type="button" className="text-left underline underline-offset-2 hover:text-foreground" onClick={() => onJump(order)}>
       {chapterTitle(order)}
     </button>
   );
@@ -138,20 +144,23 @@ export function NumberReviewPanel({
   return (
     <section className="flex flex-col gap-3 rounded-xl border p-4 text-sm">
       {header(counts.pending > 0 ? `${counts.pending} 处待处理，处理完才能提交` : "已全部处理")}
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-        <TabsList>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-w-0">
+        <TabsList className={TAB_ROW}>
           {TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value}>
+            <TabsTrigger key={t.value} value={t.value} className="flex-none">
               {t.label} {counts[t.value]}
             </TabsTrigger>
           ))}
         </TabsList>
       </Tabs>
-      <Tabs value={kind} onValueChange={(v) => setKind(v as KindTab)}>
-        <TabsList variant="line">
-          <TabsTrigger value="all">全部类型 {inStatus.length}</TabsTrigger>
-          {ANOMALY_KINDS.map((k) => (
-            <TabsTrigger key={k.kind} value={k.kind}>
+      <Tabs value={kind} onValueChange={(v) => setKind(v as KindTab)} className="min-w-0">
+        <TabsList variant="line" className={TAB_ROW}>
+          <TabsTrigger value="all" className="flex-none">
+            全部类型 {inStatus.length}
+          </TabsTrigger>
+          {/* 只列出当前状态下有异常的类型；已选中的类型即使变为 0 也保留，避免选中项消失。 */}
+          {ANOMALY_KINDS.filter((k) => kindCounts[k.kind]! > 0 || k.kind === kind).map((k) => (
+            <TabsTrigger key={k.kind} value={k.kind} className="flex-none">
               {k.label} {kindCounts[k.kind]}
             </TabsTrigger>
           ))}
@@ -163,6 +172,7 @@ export function NumberReviewPanel({
           <label className="flex items-center gap-2 text-muted-foreground">
             <Checkbox
               aria-label="全选"
+              className="pointer-coarse:after:-inset-3.5"
               checked={allChecked ? true : selected.length > 0 ? "indeterminate" : false}
               disabled={disabled}
               onCheckedChange={(v) => setChecked(v === true ? new Set(visible.map((i) => i.key)) : new Set())}
@@ -172,12 +182,13 @@ export function NumberReviewPanel({
           <div className="flex gap-2">
             {tab === "pending" && (
               <>
-                <Button size="sm" disabled={disabled || selectedFixable.length === 0} onClick={() => fix(selectedFixable)}>
+                <Button size="sm" className={TOUCH} disabled={disabled || selectedFixable.length === 0} onClick={() => fix(selectedFixable)}>
                   批量修复{selectedFixable.length > 0 && ` ${selectedFixable.length}`}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
+                  className={TOUCH}
                   disabled={disabled || selected.length === 0}
                   onClick={() => ignore(selected)}
                 >
@@ -189,6 +200,7 @@ export function NumberReviewPanel({
               <Button
                 size="sm"
                 variant="outline"
+                className={TOUCH}
                 disabled={disabled || selected.length === 0}
                 onClick={() => (tab === "ignored" ? unignore : unfix)(selected)}
               >
@@ -206,11 +218,12 @@ export function NumberReviewPanel({
         </p>
       ) : (
         <ul className="flex max-h-72 flex-col overflow-y-auto">
-          {visible.slice(0, MAX_RENDERED).map((item) => (
+          {visible.slice(0, MAX_RENDERED).map((item, index) => (
             <li key={item.key} className="flex items-center gap-3 border-b py-1.5 last:border-b-0">
               {batchable && (
                 <Checkbox
-                  aria-label="选择"
+                  aria-labelledby={`${rowId}-${index}`}
+                  className="pointer-coarse:after:-inset-3.5"
                   checked={checked.has(item.key)}
                   disabled={disabled}
                   onCheckedChange={(v) =>
@@ -223,28 +236,28 @@ export function NumberReviewPanel({
                   }
                 />
               )}
-              <span className={cn("min-w-0 flex-1", item.status !== "pending" && "text-muted-foreground")}>
+              <span id={`${rowId}-${index}`} className={cn("min-w-0 flex-1", item.status !== "pending" && "text-muted-foreground")}>
                 <ItemText item={item} jump={jump} />
               </span>
               {tab === "all" && <Badge variant={item.status === "pending" ? "destructive" : "outline"}>{STATUS_TEXT[item.status]}</Badge>}
-              <div className="flex shrink-0 gap-1">
+              <div className="flex shrink-0 gap-1 max-sm:flex-col">
                 {canFix(item) && (
-                  <Button size="xs" disabled={disabled} onClick={() => fix([item])}>
+                  <Button size="xs" className={TOUCH} disabled={disabled} onClick={() => fix([item])}>
                     修复
                   </Button>
                 )}
                 {item.status === "pending" && (
-                  <Button size="xs" variant="outline" disabled={disabled} onClick={() => ignore([item])}>
+                  <Button size="xs" variant="outline" className={TOUCH} disabled={disabled} onClick={() => ignore([item])}>
                     忽略
                   </Button>
                 )}
                 {item.status === "ignored" && (
-                  <Button size="xs" variant="ghost" disabled={disabled} onClick={() => unignore([item])}>
+                  <Button size="xs" variant="ghost" className={TOUCH} disabled={disabled} onClick={() => unignore([item])}>
                     撤销忽略
                   </Button>
                 )}
                 {item.status === "fixed" && (
-                  <Button size="xs" variant="ghost" disabled={disabled} onClick={() => unfix([item])}>
+                  <Button size="xs" variant="ghost" className={TOUCH} disabled={disabled} onClick={() => unfix([item])}>
                     撤销修复
                   </Button>
                 )}

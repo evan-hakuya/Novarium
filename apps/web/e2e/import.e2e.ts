@@ -44,6 +44,19 @@ test("imports a large manuscript", async ({ page }) => {
     await expect.poll(() => article.evaluate((el) => el.scrollTop)).toBe(0);
   });
 
+  await test.step("phone width shows one column without horizontal overflow", async () => {
+    const size = page.viewportSize()!;
+    await page.setViewportSize({ width: 390, height: 844 });
+    const article = page.locator("article[data-chapter-scroll]");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.getByRole("button", { name: "← 章节列表" }).click();
+    await expect(article).toBeHidden();
+    await page.getByRole("button", { name: "第7章 测试", exact: true }).click();
+    await expect(article.getByRole("heading", { name: "第7章 测试" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "第7章 测试", exact: true })).toBeHidden();
+    await page.setViewportSize(size);
+  });
+
   await page.locator("#title").fill("E2E 测试书");
   await page.getByRole("button", { name: "提交", exact: true }).click();
   await expect(page).toHaveURL(/\/books\/[^/]+$/, { timeout: 60_000 });
