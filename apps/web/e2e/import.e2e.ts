@@ -70,8 +70,17 @@ test("imports a large manuscript", async ({ page }) => {
     await page.getByRole("button", { name: "忽略", exact: true }).click();
   });
 
+  await test.step("the page follows the import steps", async () => {
+    const steps = page.getByRole("heading", { level: 3 }).filter({ hasText: /^\d/ });
+    await expect(steps).toHaveText(["1原稿", "2检查章节", "3书目信息", "4导入"]);
+  });
+
+  await page.locator("#title").fill("");
+  const importButton = page.getByRole("button", { name: "导入这本书", exact: true });
+  await expect(importButton).toBeDisabled();
+  await expect(importButton).toHaveAccessibleDescription(/填写书名后才能导入/);
   await page.locator("#title").fill("E2E 测试书");
-  await page.getByRole("button", { name: "提交", exact: true }).click();
+  await importButton.click();
   await expect(page).toHaveURL(/\/books\/[^/]+$/, { timeout: 60_000 });
   await expect(page.getByText("E2E 测试书").first()).toBeVisible();
 });
