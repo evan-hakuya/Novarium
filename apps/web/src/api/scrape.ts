@@ -51,8 +51,8 @@ export interface ScrapedBook extends ScrapeCandidate {
 
 export type ScrapeField = "title" | "author" | "intro" | "tags" | "cover";
 
-/** 搜索与详情在浏览器内的缓存时长。服务端另有 6 小时的缓存，重复请求不消耗点数。 */
-export const SCRAPE_STALE_MS = 30 * 60 * 1000;
+/** 搜索与详情在浏览器内缓存到页面关闭。服务端另有 6 小时的缓存，重复请求不消耗点数。 */
+export const SCRAPE_STALE_MS = Infinity;
 
 export const scrapeSearchQueryKey = (q: string, author: string) => ["scrape", "search", q, author] as const;
 export const scrapeBookQueryKey = (ref: string) => ["scrape", "book", ref] as const;

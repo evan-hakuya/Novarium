@@ -103,6 +103,7 @@ export interface DaoSearchOptions {
 export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch, options: DaoSearchOptions = {}): ScrapeSource {
   const { timeoutMs = DAOSEARCH_TIMEOUT_MS, cache, now = Date.now } = options;
 
+  /** 发请求。带 etag 时可能返回 notModified（304）。 */
   async function request<T>(path: string, etag?: string | null): Promise<{ notModified: true } | { notModified: false; data: T; etag: string | null }> {
     let res: Response;
     try {
@@ -137,6 +138,7 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
 
   async function get<T>(path: string): Promise<T> {
     const result = await request<T>(path);
+    // 不带 etag 时不会返回 notModified；这一行只用于收窄类型。
     if (result.notModified) throw new ScrapeError("unavailable", "unexpected 304");
     return result.data;
   }

@@ -62,7 +62,11 @@ function ScrapeFlow({ book, onDone }: { book: Book; onDone: () => void }) {
         className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (query.trim()) setSubmitted(query.trim());
+          const q = query.trim();
+          if (!q) return;
+          // 同一关键词失败后再次提交时重新请求。
+          if (q === submitted && search.isError) void search.refetch();
+          else setSubmitted(q);
         }}
       >
         <Input aria-label="搜索关键词" value={query} maxLength={200} onChange={(e) => setQuery(e.target.value)} />

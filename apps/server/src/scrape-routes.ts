@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { AppDeps } from "./app";
 import type { BatchQuery } from "./books";
 import { createDaoSearchSource, DAOSEARCH_USER_AGENT } from "./daosearch";
-import { books, bookTags, scrapeCache, settings } from "./db/schema";
+import { books, bookTags, settings } from "./db/schema";
 import {
   deleteStaleFiles,
   getTags,
@@ -16,7 +16,8 @@ import {
   sniffImageType,
   staleFileEntries,
 } from "./metadata";
-import { ScrapeError, type ScrapeCache, type ScrapeCandidate, type ScrapedBook, type ScrapeSource, type ScrapeSourceId } from "./scrape";
+import { ScrapeError, type ScrapeCandidate, type ScrapedBook, type ScrapeSource, type ScrapeSourceId } from "./scrape";
+import { createDbScrapeCache } from "./scrape-cache";
 import { coverKey } from "./storage/keys";
 
 type Env = { Variables: { deps: AppDeps } };
@@ -47,30 +48,6 @@ async function readKey(db: AppDeps["db"]): Promise<string | null> {
 async function getScrapeStatus(db: AppDeps["db"]): Promise<ScrapeStatus> {
   const key = await readKey(db);
   return { configured: !!key, source: "daosearch", keyHint: key ? maskKey(key) : null };
-}
-
-/** 存在 scrape_cache 表中的刮削缓存。 */
-export function createDbScrapeCache(db: AppDeps["db"]): ScrapeCache {
-  return {
-    async get(key) {
-      const row = await db.select().from(scrapeCache).where(eq(scrapeCache.key, key)).get();
-      return row ? { etag: row.etag, data: row.data, fetchedAt: row.fetchedAt.getTime() } : null;
-    },
-    async put(key, etag, data) {
-      const now = new Date();
-      await db
-        .insert(scrapeCache)
-        .values({ key, etag, data, fetchedAt: now, usedAt: now })
-        .onConflictDoUpdate({ target: scrapeCache.key, set: { etag, data, fetchedAt: now, usedAt: now } });
-    },
-    async touch(key, revalidated) {
-      const now = new Date();
-      await db
-        .update(scrapeCache)
-        .set(revalidated ? { usedAt: now, fetchedAt: now } : { usedAt: now })
-        .where(eq(scrapeCache.key, key));
-    },
-  };
 }
 
 /** 当前的刮削源；没有密钥时为 null。 */
@@ -196,7 +173,7 @@ export function createScrapeRoutes() {
     }
   });
 
-  // 刮削对话框的候选列表，书详情页与导入页共用。q 可以是书名、作者，或书页链接；author 用于把作者一致的候选排在前面。
+  // 刮削对话框的候选列表。不绑定某本书，导入时刮削（#74）也用它。q 可以是书名、作者，或书页链接；author 用于把作者一致的候选排在前面。
   app.get("/scrape/search", async (c) => {
     const q = (c.req.query("q") ?? "").trim();
     const author = (c.req.query("author") ?? "").slice(0, MAX_AUTHOR_LENGTH);
