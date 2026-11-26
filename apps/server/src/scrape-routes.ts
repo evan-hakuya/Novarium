@@ -16,7 +16,8 @@ import {
   sniffImageType,
   staleFileEntries,
 } from "./metadata";
-import { ScrapeError, type ScrapedBook, type ScrapeSource, type ScrapeSourceId } from "./scrape";
+import { ScrapeError, type ScrapeCandidate, type ScrapedBook, type ScrapeSource, type ScrapeSourceId } from "./scrape";
+import { createDbScrapeCache } from "./scrape-cache";
 import { coverKey } from "./storage/keys";
 
 type Env = { Variables: { deps: AppDeps } };
@@ -52,7 +53,7 @@ async function getScrapeStatus(db: AppDeps["db"]): Promise<ScrapeStatus> {
 /** 当前的刮削源；没有密钥时为 null。 */
 export async function getScrapeSource(deps: AppDeps): Promise<ScrapeSource | null> {
   const key = await readKey(deps.db);
-  return key ? createDaoSearchSource(key, deps.fetch) : null;
+  return key ? createDaoSearchSource(key, deps.fetch, { cache: createDbScrapeCache(deps.db) }) : null;
 }
 
 /** 把 ScrapeError 转成统一的响应：502 scrape_unavailable，带 kind 与 retryAfterSeconds。 */
@@ -64,8 +65,8 @@ export function scrapeErrorResponse(c: Context<Env>, error: unknown) {
   return c.json({ error: "scrape_unavailable", kind: error.kind, retryAfterSeconds: error.retryAfterSeconds }, 502);
 }
 
-/** 作者与这本书现有作者一致的候选排在前面，其余保持刮削源给出的顺序。 */
-export function rankByAuthor(results: ScrapedBook[], author: string): ScrapedBook[] {
+/** 作者与现有作者一致的候选排在前面，其余保持刮削源给出的顺序。 */
+export function rankByAuthor(results: ScrapeCandidate[], author: string): ScrapeCandidate[] {
   const own = author.trim();
   if (!own) return results;
   return [...results.filter((r) => r.author?.trim() === own), ...results.filter((r) => r.author?.trim() !== own)];
@@ -172,17 +173,28 @@ export function createScrapeRoutes() {
     }
   });
 
-  // 刮削对话框的候选列表。q 可以是书名、作者，或 DaoSearch 与源站的书页链接。
-  app.get("/books/:bookId/scrape/search", async (c) => {
-    const deps = c.get("deps");
+  // 刮削对话框的候选列表。不绑定某本书，导入时刮削（#74）也用它。q 可以是书名、作者，或书页链接；author 用于把作者一致的候选排在前面。
+  app.get("/scrape/search", async (c) => {
     const q = (c.req.query("q") ?? "").trim();
+    const author = (c.req.query("author") ?? "").slice(0, MAX_AUTHOR_LENGTH);
     if (!q || q.length > 200) return c.json({ error: "invalid_query" }, 400);
-    const book = await deps.db.select({ author: books.author }).from(books).where(eq(books.id, c.req.param("bookId"))).get();
-    if (!book) return c.json({ error: "not_found" }, 404);
-    const source = await getScrapeSource(deps);
+    const source = await getScrapeSource(c.get("deps"));
     if (!source) return c.json({ error: "scrape_not_configured" }, 409);
     try {
-      return c.json({ results: rankByAuthor(await source.search(q), book.author) });
+      return c.json({ results: rankByAuthor(await source.search(q), author) });
+    } catch (error) {
+      return scrapeErrorResponse(c, error);
+    }
+  });
+
+  // 所有者点击某个候选后才读取它的详情。
+  app.get("/scrape/books", async (c) => {
+    const ref = (c.req.query("ref") ?? "").trim();
+    if (!ref || ref.length > 200) return c.json({ error: "invalid_ref" }, 400);
+    const source = await getScrapeSource(c.get("deps"));
+    if (!source) return c.json({ error: "scrape_not_configured" }, 409);
+    try {
+      return c.json({ book: await source.getBook(ref) });
     } catch (error) {
       return scrapeErrorResponse(c, error);
     }

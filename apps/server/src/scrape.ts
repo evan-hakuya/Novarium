@@ -4,19 +4,23 @@
 /** 已实现的刮削源。 */
 export type ScrapeSourceId = "daosearch";
 
-/** 刮削源中的一部作品。搜索结果与按 ID 读取的结果是同一结构。 */
-export interface ScrapedBook {
+/** 搜索得到的候选作品。 */
+export interface ScrapeCandidate {
   /** 作品在刮削源中的 ID，交给 getBook 读取。对调用方是不透明的字符串。 */
   ref: string;
   /** 作品在刮削源的页面，展示数据时附上（DaoSearch 条款要求）。 */
   url: string;
   title: string | null;
   author: string | null;
-  intro: string | null;
-  tags: string[];
   coverUrl: string | null;
   /** 作品所在的原发平台，例如 qidian。 */
   platform: string;
+}
+
+/** 按 ID 读取到的作品。 */
+export interface ScrapedBook extends ScrapeCandidate {
+  intro: string | null;
+  tags: string[];
   /** 字数（汉字）。 */
   wordCount: number | null;
   status: "ongoing" | "completed" | null;
@@ -34,11 +38,20 @@ export interface ScrapeQuota {
 
 export interface ScrapeSource {
   readonly id: ScrapeSourceId;
-  /** 按书名、作者或书页链接搜索，返回带详情的候选，最佳匹配在前。 */
-  search(query: string): Promise<ScrapedBook[]>;
+  /** 按书名、作者或书页链接搜索，最佳匹配在前。 */
+  search(query: string): Promise<ScrapeCandidate[]>;
   getBook(ref: string): Promise<ScrapedBook>;
   /** 测试连接：确认密钥有效并返回当天用量，不消耗点数。 */
   check(): Promise<ScrapeQuota>;
+}
+
+/** 刮削源响应的缓存。key 由刮削源决定；fetchedAt 是最近一次从刮削源取得或验证的时间（毫秒）。 */
+export interface ScrapeCache {
+  get(key: string): Promise<{ etag: string | null; data: unknown; fetchedAt: number } | null>;
+  /** 写入新的响应，取得时间记为现在。 */
+  put(key: string, etag: string | null, data: unknown): Promise<void>;
+  /** 记录一次使用；revalidated 为 true 时把取得时间也更新为现在（304 验证通过）。 */
+  touch(key: string, revalidated: boolean): Promise<void>;
 }
 
 /**

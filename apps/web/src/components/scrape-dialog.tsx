@@ -1,13 +1,18 @@
 import { useState, type ReactNode } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { booksQueryKey, coverUrl, type BookDetail } from "@/api/books";
 import {
   applyScrape,
+  fetchScrapedBook,
   formatWordCount,
   platformName,
+  SCRAPE_STALE_MS,
+  scrapeBookQueryKey,
   scrapeFailureReason,
+  scrapeSearchQueryKey,
   searchScrape,
   statusText,
+  type ScrapeCandidate,
   type ScrapedBook,
   type ScrapeField,
 } from "@/api/scrape";
@@ -33,25 +38,40 @@ export function ScrapeDialog({ book, open, onOpenChange }: { book: Book; open: b
 
 function ScrapeFlow({ book, onDone }: { book: Book; onDone: () => void }) {
   const [query, setQuery] = useState(book.title);
-  const [picked, setPicked] = useState<ScrapedBook | null>(null);
-  const search = useMutation({ mutationFn: (q: string) => searchScrape(book.id, q) });
+  const [submitted, setSubmitted] = useState<string | null>(null);
+  const [picked, setPicked] = useState<ScrapeCandidate | null>(null);
+  const search = useQuery({
+    queryKey: scrapeSearchQueryKey(submitted ?? "", book.author.trim()),
+    queryFn: () => searchScrape(submitted!, book.author.trim()),
+    enabled: submitted !== null,
+    staleTime: SCRAPE_STALE_MS,
+    gcTime: SCRAPE_STALE_MS,
+    retry: false,
+  });
 
-  if (picked) return <ScrapeCompare book={book} scraped={picked} onBack={() => setPicked(null)} onDone={onDone} />;
+  if (picked) return <ScrapeDetail book={book} candidate={picked} onBack={() => setPicked(null)} onDone={onDone} />;
+  const searching = search.isFetching;
 
   return (
     <>
       <DialogTitle>刮削</DialogTitle>
-      <DialogDescription>在 DaoSearch 搜索这本书。可以输入书名、作者，或粘贴 DaoSearch 与源站的书页链接。每次搜索约消耗 15 点。</DialogDescription>
+      <DialogDescription>
+        在 DaoSearch 搜索这本书。可以输入书名、作者，或粘贴 DaoSearch 与源站的书页链接。搜索消耗 5 点，查看详情消耗 1 点，6 小时内重复的请求不消耗点数。
+      </DialogDescription>
       <form
         className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (query.trim()) search.mutate(query.trim());
+          const q = query.trim();
+          if (!q) return;
+          // 同一关键词失败后再次提交时重新请求。
+          if (q === submitted && search.isError) void search.refetch();
+          else setSubmitted(q);
         }}
       >
         <Input aria-label="搜索关键词" value={query} maxLength={200} onChange={(e) => setQuery(e.target.value)} />
-        <Button type="submit" disabled={search.isPending || !query.trim()}>
-          {search.isPending ? "搜索中…" : "搜索"}
+        <Button type="submit" disabled={searching || !query.trim()}>
+          {searching ? "搜索中…" : "搜索"}
         </Button>
       </form>
       {search.isError && <p className="text-sm text-destructive">{scrapeFailureReason(search.error)}</p>}
@@ -73,14 +93,7 @@ function ScrapeFlow({ book, onDone }: { book: Book; onDone: () => void }) {
                     )}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {[
-                      platformName(result.platform),
-                      formatWordCount(result.wordCount),
-                      result.status && statusText[result.status],
-                      result.releasedAt && `首发 ${result.releasedAt}`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    {platformName(result.platform)}
                   </span>
                 </div>
               </button>
@@ -102,6 +115,29 @@ function RemoteCover({ url, title, className = "h-20 w-14" }: { url: string | nu
         <span className="text-xs text-muted-foreground">无封面</span>
       )}
     </div>
+  );
+}
+
+/** 点击候选后才读取详情（每本 1 点），读完进入对比页。 */
+function ScrapeDetail({ book, candidate, onBack, onDone }: { book: Book; candidate: ScrapeCandidate; onBack: () => void; onDone: () => void }) {
+  const detail = useQuery({
+    queryKey: scrapeBookQueryKey(candidate.ref),
+    queryFn: () => fetchScrapedBook(candidate.ref),
+    staleTime: SCRAPE_STALE_MS,
+    gcTime: SCRAPE_STALE_MS,
+    retry: false,
+  });
+  if (detail.data) return <ScrapeCompare book={book} scraped={detail.data} onBack={onBack} onDone={onDone} />;
+  return (
+    <>
+      <DialogTitle>{candidate.title ?? "（无书名）"}</DialogTitle>
+      <DialogDescription>{detail.isError ? scrapeFailureReason(detail.error) : "读取详情中…"}</DialogDescription>
+      <div className="flex justify-end">
+        <Button variant="ghost" onClick={onBack}>
+          返回结果
+        </Button>
+      </div>
+    </>
   );
 }
 
@@ -173,6 +209,10 @@ function ScrapeCompare({ book, scraped, onBack, onDone }: { book: Book; scraped:
         <a className="underline" href={scraped.url} target="_blank" rel="noreferrer">
           {platformName(scraped.platform)} · DaoSearch
         </a>
+        {[formatWordCount(scraped.wordCount), scraped.status && statusText[scraped.status], scraped.releasedAt && `首发 ${scraped.releasedAt}`]
+          .filter(Boolean)
+          .map((text) => ` · ${text}`)
+          .join("")}
       </DialogDescription>
       <div className="grid grid-cols-[auto_3rem_1fr_1fr] items-start gap-x-3 gap-y-3 text-sm">
         <span />

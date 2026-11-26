@@ -30,16 +30,20 @@ export const clearScrapeKey = () => request<ScrapeStatus>("/api/admin/settings/s
 export const checkScrape = () =>
   request<{ ok: true; quota: ScrapeQuota }>("/api/admin/settings/scrape/check", { method: "POST" }).then((r) => r.quota);
 
-/** 刮削源中的一部作品。 */
-export interface ScrapedBook {
+/** 搜索得到的候选作品。 */
+export interface ScrapeCandidate {
   ref: string;
   url: string;
   title: string | null;
   author: string | null;
-  intro: string | null;
-  tags: string[];
   coverUrl: string | null;
   platform: string;
+}
+
+/** 点击候选后读取到的作品详情。 */
+export interface ScrapedBook extends ScrapeCandidate {
+  intro: string | null;
+  tags: string[];
   wordCount: number | null;
   status: "ongoing" | "completed" | null;
   releasedAt: string | null;
@@ -47,8 +51,18 @@ export interface ScrapedBook {
 
 export type ScrapeField = "title" | "author" | "intro" | "tags" | "cover";
 
-export const searchScrape = (bookId: string, q: string) =>
-  request<{ results: ScrapedBook[] }>(`/api/admin/books/${bookId}/scrape/search?${new URLSearchParams({ q })}`).then((r) => r.results);
+/** 搜索与详情在浏览器内缓存到页面关闭。服务端另有 6 小时的缓存，重复请求不消耗点数。 */
+export const SCRAPE_STALE_MS = Infinity;
+
+export const scrapeSearchQueryKey = (q: string, author: string) => ["scrape", "search", q, author] as const;
+export const scrapeBookQueryKey = (ref: string) => ["scrape", "book", ref] as const;
+
+/** 搜索候选。author 用于把作者一致的候选排在前面。 */
+export const searchScrape = (q: string, author: string) =>
+  request<{ results: ScrapeCandidate[] }>(`/api/admin/scrape/search?${new URLSearchParams({ q, author })}`).then((r) => r.results);
+
+export const fetchScrapedBook = (ref: string) =>
+  request<{ book: ScrapedBook }>(`/api/admin/scrape/books?${new URLSearchParams({ ref })}`).then((r) => r.book);
 
 export const applyScrape = (bookId: string, ref: string, fields: ScrapeField[]) =>
   request<{ ok: true }>(`/api/admin/books/${bookId}/scrape`, {
