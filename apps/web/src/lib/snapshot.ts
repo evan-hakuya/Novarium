@@ -32,7 +32,7 @@ export function snapshotRows(snapshot: ScrapeSnapshot): SnapshotRow[] {
   const state = snapshot.availability?.state;
   if (state && state !== "available") {
     const since = snapshot.availability?.since;
-    rows.push({ label: "在架状态", text: `${availabilityText[state] ?? state}${since ? `（${since} 起）` : ""}` });
+    rows.push({ label: "在架状态", text: `${availabilityText[state] ?? state}${since ? `（${day(since)} 起）` : ""}` });
   }
   for (const m of snapshot.metrics) {
     const value = m.key === "score" && snapshot.scoreScale ? `${m.value} / ${snapshot.scoreScale}` : num(m.value);

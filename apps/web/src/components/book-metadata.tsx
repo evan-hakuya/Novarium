@@ -13,7 +13,7 @@ import {
   type BookDetail,
   type BookMetadata,
 } from "@/api/books";
-import { applyScrape, fetchScrapeStatus, scrapeStatusQueryKey } from "@/api/scrape";
+import { applyScrape, fetchScrapeStatus, refPlatform, scrapeStatusQueryKey } from "@/api/scrape";
 import { BookDescriptionView } from "@/components/book-description";
 import { BookSnapshotView } from "@/components/book-snapshot";
 import { ChipInput } from "@/components/chip-input";
@@ -206,7 +206,7 @@ export function BookMetadataPanel({ book }: { book: Book }) {
             <p className="whitespace-pre-wrap text-sm text-muted-foreground">{book.intro || "没有简介。"}</p>
             <BookDescriptionView book={book} />
             {book.snapshot && (
-              <BookSnapshotView snapshot={book.snapshot} platform={book.scrapeRef?.split("/")[0] ?? null} scrapedAt={book.scrapedAt} />
+              <BookSnapshotView snapshot={book.snapshot} platform={book.scrapeRef ? refPlatform(book.scrapeRef) : null} scrapedAt={book.scrapedAt} />
             )}
             {book.scrapeUrl && (
               <p className="text-xs text-muted-foreground">

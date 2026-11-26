@@ -9,6 +9,7 @@ import {
   formatWordCount,
   isScrapeNotFound,
   platformName,
+  refPlatform,
   SCRAPE_STALE_MS,
   scrapeBookQueryKey,
   scrapeFailureReason,
@@ -85,7 +86,7 @@ function ScrapeFlow({ target, onApply, onDone }: FlowProps) {
       title: target.title,
       author: target.author,
       coverUrl: null,
-      platform: target.scrapeRef.split("/")[0] ?? "",
+      platform: refPlatform(target.scrapeRef),
     };
     return <ScrapeDetail target={target} onApply={onApply} onDone={onDone} candidate={saved} rescrape onBack={() => setRescrape(false)} />;
   }
@@ -189,7 +190,7 @@ function ScrapeDetail({ candidate, ...props }: DetailProps & { candidate: Scrape
       <DialogTitle>{candidate.title ?? "（无书名）"}</DialogTitle>
       <DialogDescription>
         {gone
-          ? "DaoSearch 上已经没有这部作品。现有数据与平台数据都保留不变；可以重新搜索，换成另一部作品。"
+          ? "DaoSearch 上已经没有这部作品。书的现有数据与快照都保留不变；可以重新搜索，换成另一部作品。"
           : detail.isError
             ? scrapeFailureReason(detail.error)
             : rescrape
@@ -256,11 +257,15 @@ function ScrapeCompare({ target, onApply, onDone, scraped, rescrape, onBack }: D
     (Object.keys(scrapedHas) as ScrapeField[]).map((f) => [f, scrapedHas[f] || (READ_ONLY_FIELDS.has(f) && !empty[f])]),
   ) as Record<ScrapeField, boolean>;
   // 刮削结果有值、现有值为空的项默认勾选；所有者能编辑的项有值时默认不勾选。
-  // 再次刮削同一部作品时，只读字段也默认勾选：它们由刮削写入，所有者改不了，应跟上源站。
+  // 刮削过的书再次刮削时，只读字段也默认勾选（包括清空）：它们由刮削写入，所有者改不了，应与这次的作品一致。
+  // 换成另一部作品时也是这样，否则快照与来源换了，字数、源站链接等仍是旧作品的。
+  const syncReadOnly = !!target.scrapeRef;
   const [chosen, setChosen] = useState<Set<ScrapeField>>(
     () =>
       new Set(
-        (Object.keys(scrapedHas) as ScrapeField[]).filter((f) => scrapedHas[f] && (empty[f] || (rescrape && READ_ONLY_FIELDS.has(f)))),
+        (Object.keys(scrapedHas) as ScrapeField[]).filter(
+          (f) => (scrapedHas[f] && empty[f]) || (syncReadOnly && READ_ONLY_FIELDS.has(f) && available[f]),
+        ),
       ),
   );
   const apply = useMutation({
@@ -341,7 +346,7 @@ function ScrapeCompare({ target, onApply, onDone, scraped, rescrape, onBack }: D
     <>
       <DialogTitle>对比并写入</DialogTitle>
       <DialogDescription>
-        勾选要写入的项。标签与别名合并进现有的值，不删除已有的。平台数据（月票、榜单等）每次刮削都自动更新，不用勾选。来源：
+        勾选要写入的项。标签与别名合并进现有的值，不删除已有的。快照（月票、榜单等）每次刮削都自动整体替换，不用勾选。来源：
         <a className="underline" href={scraped.url} target="_blank" rel="noreferrer">
           {platformName(scraped.platform)} · DaoSearch
         </a>

@@ -170,6 +170,9 @@ export function scrapeFailureReason(error: unknown): string {
   return describeError(error);
 }
 
+/** 作品 ID 中的平台，例如 qidian/1010868264 → qidian。 */
+export const refPlatform = (ref: string) => ref.split("/")[0] ?? "";
+
 /** 是否为「刮削源上没有这部作品」。 */
 export const isScrapeNotFound = (error: unknown) =>
   error instanceof ApiError && error.code === "scrape_unavailable" && error.kind === "not_found";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDaoSearchSource, DAOSEARCH_BASE, DAOSEARCH_CACHE_MS, DAOSEARCH_USER_AGENT } from "./daosearch";
+import { createDaoSearchSource, DAOSEARCH_BASE, DAOSEARCH_CACHE_MS, DAOSEARCH_SOURCES_CACHE_MS, DAOSEARCH_USER_AGENT } from "./daosearch";
 import { ScrapeError, type ScrapeCache } from "./scrape";
 
 // 测试不调用真实的 DaoSearch，用假的 fetch 返回模拟响应。
@@ -188,6 +188,11 @@ describe("DaoSearch 刮削源", () => {
     });
   });
 
+  it("快照：更新速度缺少数字时整体为 null", async () => {
+    const { doFetch } = fakeFetch(withSources(() => json(200, { data: { ...book, pace: { paused: false } } })));
+    expect((await createDaoSearchSource(KEY, doFetch).getBook("qidian/1010868264")).snapshot.pace).toBeNull();
+  });
+
   it("拒绝格式不对的作品 ID，不发请求", async () => {
     const { calls, doFetch } = fakeFetch(() => json(200, { data: book }));
     const source = createDaoSearchSource(KEY, doFetch);
@@ -259,6 +264,19 @@ describe("DaoSearch 响应缓存", () => {
     expect(calls.map((c) => new URL(c.url).pathname)).toEqual([`/api/v1${PATH}`, "/api/v1/sources"]);
     expect(mem.rows.get(PATH)?.etag).toBe('"v1"');
     expect(mem.rows.get(PATH)?.usedAt).toBe(mem.now());
+  });
+
+  it("/sources 缓存 7 天：作品缓存过期后只重新读取作品", async () => {
+    const mem = memoryCache();
+    const { calls, doFetch } = fakeFetch(withSources(() => json(200, { data: book })));
+    const source = createDaoSearchSource(KEY, doFetch, { cache: mem.cache, now: mem.now });
+    await source.getBook(scraped.ref);
+    mem.advance(DAOSEARCH_CACHE_MS);
+    await source.getBook(scraped.ref);
+    expect(calls.filter((c) => c.url.endsWith("/sources"))).toHaveLength(1);
+    mem.advance(DAOSEARCH_SOURCES_CACHE_MS);
+    await source.getBook(scraped.ref);
+    expect(calls.filter((c) => c.url.endsWith("/sources"))).toHaveLength(2);
   });
 
   it("过期后带 ETag 重新验证，304 时继续用缓存并刷新取得时间", async () => {
