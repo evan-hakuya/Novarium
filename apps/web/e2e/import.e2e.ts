@@ -4,6 +4,8 @@ import { manuscript } from "./manuscript.ts";
 
 const CHAPTERS = 1200;
 const EXTRAS = 3;
+/** 原稿中跳过的章节序号，用来检查异常面板。 */
+const MISSING = 50;
 /** 应用本书章节正则后重新整理并渲染预览的时间上限。 */
 const PATTERN_BUDGET_MS = 10_000;
 
@@ -17,7 +19,7 @@ test("imports a large manuscript", async ({ page }) => {
   await page.locator("#file").setInputFiles({
     name: "E2E 测试书.txt",
     mimeType: "text/plain",
-    buffer: Buffer.from(manuscript(CHAPTERS, EXTRAS)),
+    buffer: Buffer.from(manuscript(CHAPTERS, EXTRAS, MISSING)),
   });
   await expect(page.getByText(`${CHAPTERS} 章 · 整理后`)).toBeVisible({ timeout: 60_000 });
 
@@ -48,13 +50,24 @@ test("imports a large manuscript", async ({ page }) => {
     const size = page.viewportSize()!;
     await page.setViewportSize({ width: 390, height: 844 });
     const article = page.locator("article[data-chapter-scroll]");
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    const width = () => page.evaluate(() => document.documentElement.scrollWidth);
+    expect(await width()).toBeLessThanOrEqual(390);
     await page.getByRole("button", { name: "← 章节列表" }).click();
     await expect(article).toBeHidden();
+    // 返回列表时停在刚才看的那一章。
+    await expect(page.getByRole("button", { name: "第6章 测试", exact: true })).toBeInViewport();
+    expect(await width()).toBeLessThanOrEqual(390);
     await page.getByRole("button", { name: "第7章 测试", exact: true }).click();
     await expect(article.getByRole("heading", { name: "第7章 测试" })).toBeVisible();
     await expect(page.getByRole("button", { name: "第7章 测试", exact: true })).toBeHidden();
     await page.setViewportSize(size);
+  });
+
+  await test.step("anomaly panel names each row and lists only present types", async () => {
+    await expect(page.getByRole("checkbox", { name: `缺号：缺少第 ${MISSING} 章` })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "缺号 1" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^乱序/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "忽略", exact: true }).click();
   });
 
   await page.locator("#title").fill("E2E 测试书");

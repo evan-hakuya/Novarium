@@ -10,6 +10,9 @@ export interface ChapterItem {
   volume?: string | null;
 }
 
+/** 正文区域自己滚动（宽屏两栏）；窄屏一栏时由页面滚动。 */
+const scrollsItself = (el: Element) => getComputedStyle(el).overflowY === "auto";
+
 /**
  * 左侧章节列表、右侧章节正文。正文由调用方按章节渲染。
  * 窄屏（md 以下）只显示一栏：先显示列表，选中章节后显示正文，「← 章节列表」返回。
@@ -53,7 +56,7 @@ export function ChapterBrowser({
   useEffect(() => {
     if (shown.current.reading === reading) return;
     shown.current.reading = reading;
-    if (window.matchMedia("(min-width: 48rem)").matches) return;
+    if (!articleRef.current || scrollsItself(articleRef.current)) return;
     if (reading) articleRef.current?.scrollIntoView({ block: "start" });
     else listRef.current?.querySelector(`[data-order="${selected}"]`)?.scrollIntoView({ block: "center" });
   }, [reading, selected]);
@@ -142,8 +145,9 @@ export function ChapterText({ text }: { text: string }) {
     setPage(p);
     // 宽屏正文区域自己滚动；窄屏由页面滚动，滚回正文开头。
     const scroller = topRef.current?.closest("[data-chapter-scroll]");
-    if (scroller && scroller.scrollHeight > scroller.clientHeight) scroller.scrollTo({ top: 0 });
-    else scroller?.scrollIntoView({ block: "start" });
+    if (!scroller) return;
+    if (scrollsItself(scroller)) scroller.scrollTo({ top: 0 });
+    else scroller.scrollIntoView({ block: "start" });
   };
 
   return (

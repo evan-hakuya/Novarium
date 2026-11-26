@@ -240,7 +240,7 @@ export function NumberReviewPanel({
                 <ItemText item={item} jump={jump} />
               </span>
               {tab === "all" && <Badge variant={item.status === "pending" ? "destructive" : "outline"}>{STATUS_TEXT[item.status]}</Badge>}
-              <div className="flex shrink-0 gap-1 max-sm:flex-col">
+              <div className="flex shrink-0 gap-1">
                 {canFix(item) && (
                   <Button size="xs" className={TOUCH} disabled={disabled} onClick={() => fix([item])}>
                     修复
