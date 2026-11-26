@@ -25,6 +25,15 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: External services are called from the server only
+        run: |
+          # grep 返回 1 表示没有匹配；0 是找到地址，2 是目录缺失等错误，都要失败。
+          rc=0
+          grep -rnE 'daosearch\.io|api\.cloudflare\.com|/ai/run/' apps/web/src packages/core/src || rc=$?
+          if [ "$rc" -ne 1 ]; then
+            echo "::error::Call DaoSearch and Workers AI from apps/server only (CODING_STANDARDS.md); grep exit $rc."
+            exit 1
+          fi
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test

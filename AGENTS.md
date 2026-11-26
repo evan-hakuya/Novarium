@@ -18,12 +18,12 @@ Debug and accept Legado book sources against the local reader container. Verify 
 
 ### Scraping
 
-DaoSearch is the first scraping source (ADR 0006). Endpoints, costs, fields and terms are in `docs/agents/daosearch.md`. Call it from the server only, never from the browser.
+DaoSearch is the first scraping source (ADR 0006). Endpoints, costs, fields and terms are in `docs/agents/daosearch.md`.
 
 ### AI review
 
-AI review uses Workers AI `clef` and `clairic`, triggered by the owner only (ADR 0007). Request formats, prices, quota and test results are in `docs/agents/workers-ai.md`. Call it from the server only; organizing must still succeed without AI.
+AI review uses Workers AI `clef` and `clairic` (ADR 0007). Request formats, prices, quota and test results are in `docs/agents/workers-ai.md`.
 
 ## Workflow
 
-Every change goes branch → Conventional Commit → PR → squash merge → deploy; `main` only receives squash merges, which keeps its commits Verified. The agent reviews, merges and deploys its own PRs. Follow the steps in `docs/agents/workflow.md` for any code or doc change.
+Every change goes branch → Conventional Commit → PR → review → squash merge → deploy; `main` only receives squash merges, which keeps its commits Verified. A review subagent checks each PR against `CODING_STANDARDS.md`; the agent then merges and deploys its own PRs. Follow the steps in `docs/agents/workflow.md` for any code or doc change.
