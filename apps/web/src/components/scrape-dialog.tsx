@@ -7,7 +7,9 @@ import {
   formatFacet,
   formatReleased,
   formatWordCount,
+  isScrapeNotFound,
   platformName,
+  refPlatform,
   SCRAPE_STALE_MS,
   scrapeBookQueryKey,
   scrapeFailureReason,
@@ -32,6 +34,8 @@ export interface ScrapeTarget extends BookDescription {
   tags: string[];
   /** 现有封面的地址；没有封面时为 null。 */
   coverUrl: string | null;
+  /** 已刮削过的书的作品 ID。有值时直接读取这部作品，不再搜索（#43）。 */
+  scrapeRef?: string | null;
 }
 
 /** 所有者在对比页确认后调用，写入勾选的字段。抛出的错误显示在对比页。 */
@@ -43,7 +47,7 @@ interface FlowProps {
   onDone: () => void;
 }
 
-/** 刮削对话框（ADR 0006）：搜索 DaoSearch，选定作品，逐项勾选后交给 onApply。 */
+/** 刮削对话框（ADR 0006）：搜索 DaoSearch，选定作品，逐项勾选后交给 onApply。已刮削过的书直接读取保存的作品。 */
 export function ScrapeDialog({
   target,
   onApply,
@@ -53,7 +57,7 @@ export function ScrapeDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        {/* 每次打开都从搜索开始。 */}
+        {/* 每次打开都从头开始：已刮削过的书从保存的作品开始，其余从搜索开始。 */}
         {open && <ScrapeFlow target={target} onApply={onApply} onDone={() => onOpenChange(false)} />}
       </DialogContent>
     </Dialog>
@@ -61,6 +65,8 @@ export function ScrapeDialog({
 }
 
 function ScrapeFlow({ target, onApply, onDone }: FlowProps) {
+  // 再次刮削：按保存的作品 ID 读取（1 点），不搜索。「重新搜索」后切换到搜索。
+  const [rescrape, setRescrape] = useState(!!target.scrapeRef);
   const [query, setQuery] = useState(target.title);
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [picked, setPicked] = useState<ScrapeCandidate | null>(null);
@@ -73,7 +79,29 @@ function ScrapeFlow({ target, onApply, onDone }: FlowProps) {
     retry: false,
   });
 
-  if (picked) return <ScrapeDetail target={target} onApply={onApply} candidate={picked} onBack={() => setPicked(null)} onDone={onDone} />;
+  if (rescrape && target.scrapeRef) {
+    const saved: ScrapeCandidate = {
+      ref: target.scrapeRef,
+      url: "",
+      title: target.title,
+      author: target.author,
+      coverUrl: null,
+      platform: refPlatform(target.scrapeRef),
+    };
+    return <ScrapeDetail target={target} onApply={onApply} onDone={onDone} candidate={saved} rescrape onBack={() => setRescrape(false)} />;
+  }
+  if (picked) {
+    return (
+      <ScrapeDetail
+        target={target}
+        onApply={onApply}
+        candidate={picked}
+        rescrape={picked.ref === target.scrapeRef}
+        onBack={() => setPicked(null)}
+        onDone={onDone}
+      />
+    );
+  }
   const searching = search.isFetching;
 
   return (
@@ -142,8 +170,12 @@ function RemoteCover({ url, title, className = "h-20 w-14" }: { url: string | nu
   );
 }
 
+/** 对比页与详情页共用的参数。rescrape 为 true 表示读的是这本书保存的作品，返回按钮是「重新搜索」。 */
+type DetailProps = FlowProps & { rescrape: boolean; onBack: () => void };
+
 /** 点击候选后才读取详情（每本 1 点），读完进入对比页。 */
-function ScrapeDetail({ candidate, onBack, ...props }: FlowProps & { candidate: ScrapeCandidate; onBack: () => void }) {
+function ScrapeDetail({ candidate, ...props }: DetailProps & { candidate: ScrapeCandidate }) {
+  const { rescrape, onBack } = props;
   const detail = useQuery({
     queryKey: scrapeBookQueryKey(candidate.ref),
     queryFn: () => fetchScrapedBook(candidate.ref),
@@ -151,14 +183,23 @@ function ScrapeDetail({ candidate, onBack, ...props }: FlowProps & { candidate: 
     gcTime: SCRAPE_STALE_MS,
     retry: false,
   });
-  if (detail.data) return <ScrapeCompare {...props} scraped={detail.data} onBack={onBack} />;
+  if (detail.data) return <ScrapeCompare {...props} scraped={detail.data} />;
+  const gone = rescrape && detail.isError && isScrapeNotFound(detail.error);
   return (
     <>
       <DialogTitle>{candidate.title ?? "（无书名）"}</DialogTitle>
-      <DialogDescription>{detail.isError ? scrapeFailureReason(detail.error) : "读取详情中…"}</DialogDescription>
+      <DialogDescription>
+        {gone
+          ? "DaoSearch 上已经没有这部作品。书的现有数据与快照都保留不变；可以重新搜索，换成另一部作品。"
+          : detail.isError
+            ? scrapeFailureReason(detail.error)
+            : rescrape
+              ? "按上次刮削的作品读取最新数据…"
+              : "读取详情中…"}
+      </DialogDescription>
       <div className="flex justify-end">
         <Button variant="ghost" onClick={onBack}>
-          返回结果
+          {rescrape ? "重新搜索" : "返回结果"}
         </Button>
       </div>
     </>
@@ -170,7 +211,7 @@ const READ_ONLY_FIELDS = new Set<ScrapeField>(["authorEn", "wordCount", "release
 
 const matureText = (mature: boolean | null) => (mature === null ? null : mature ? "是" : "否");
 
-function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps & { scraped: ScrapedBook; onBack: () => void }) {
+function ScrapeCompare({ target, onApply, onDone, scraped, rescrape, onBack }: DetailProps & { scraped: ScrapedBook }) {
   const newAliases = scraped.aliases.filter((a) => !target.aliases.includes(a));
   // 刮削结果里有值的项。
   const scrapedHas: Record<ScrapeField, boolean> = {
@@ -215,9 +256,17 @@ function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps &
   const available = Object.fromEntries(
     (Object.keys(scrapedHas) as ScrapeField[]).map((f) => [f, scrapedHas[f] || (READ_ONLY_FIELDS.has(f) && !empty[f])]),
   ) as Record<ScrapeField, boolean>;
-  // 刮削结果有值、现有值为空的项默认勾选。
+  // 刮削结果有值、现有值为空的项默认勾选；所有者能编辑的项有值时默认不勾选。
+  // 刮削过的书再次刮削时，只读字段也默认勾选（包括清空）：它们由刮削写入，所有者改不了，应与这次的作品一致。
+  // 换成另一部作品时也是这样，否则快照与来源换了，字数、源站链接等仍是旧作品的。
+  const syncReadOnly = !!target.scrapeRef;
   const [chosen, setChosen] = useState<Set<ScrapeField>>(
-    () => new Set((Object.keys(scrapedHas) as ScrapeField[]).filter((f) => scrapedHas[f] && empty[f])),
+    () =>
+      new Set(
+        (Object.keys(scrapedHas) as ScrapeField[]).filter(
+          (f) => (scrapedHas[f] && empty[f]) || (syncReadOnly && READ_ONLY_FIELDS.has(f) && available[f]),
+        ),
+      ),
   );
   const apply = useMutation({
     mutationFn: () => onApply(scraped, [...chosen]),
@@ -297,7 +346,7 @@ function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps &
     <>
       <DialogTitle>对比并写入</DialogTitle>
       <DialogDescription>
-        勾选要写入的项。标签与别名合并进现有的值，不删除已有的。来源：
+        勾选要写入的项。标签与别名合并进现有的值，不删除已有的。快照（月票、榜单等）每次刮削都自动整体替换，不用勾选。来源：
         <a className="underline" href={scraped.url} target="_blank" rel="noreferrer">
           {platformName(scraped.platform)} · DaoSearch
         </a>
@@ -328,7 +377,7 @@ function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps &
       {apply.isError && <p className="text-sm text-destructive">{scrapeFailureReason(apply.error)}</p>}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" disabled={apply.isPending} onClick={onBack}>
-          返回结果
+          {rescrape ? "重新搜索" : "返回结果"}
         </Button>
         <Button disabled={apply.isPending} onClick={() => apply.mutate()}>
           {apply.isPending ? "写入中…" : chosen.size > 0 ? `写入 ${chosen.size} 项` : "只记下来源"}

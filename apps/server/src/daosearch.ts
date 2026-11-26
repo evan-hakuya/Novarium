@@ -5,6 +5,7 @@ import {
   type ScrapeCache,
   type ScrapeCandidate,
   type ScrapedBook,
+  type ScrapeSnapshot,
   type ScrapeErrorKind,
   type ScrapeQuota,
   type ScrapeSource,
@@ -17,6 +18,8 @@ export const DAOSEARCH_TIMEOUT_MS = 15_000;
 const SEARCH_LIMIT = 10;
 /** 搜索与作品响应的缓存时长，与 DaoSearch 声明的 x-cache-seconds 一致。过期后带 ETag 重新验证，304 不消耗点数。 */
 export const DAOSEARCH_CACHE_MS = 6 * 60 * 60 * 1000;
+/** /sources 的缓存时长。DaoSearch 说明它很少变化，建议缓存；过期后同样带 ETag 重新验证。 */
+export const DAOSEARCH_SOURCES_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const PLATFORMS = new Set(["qidian", "fanqie", "jjwxc", "faloo", "qimao", "zongheng", "seventeenk", "sfacg", "ciweimao"]);
 /** 作品 ID 只允许字母、数字、下划线与连字符，避免「..」等路径段把请求带到别的端点。 */
@@ -50,6 +53,29 @@ interface DaoSearchBook extends DaoSearchResult {
   mature?: boolean;
   source_url?: string | null;
   also_on?: { source: string; url: string }[] | null;
+  metrics?: { key: string; label?: string; value: number; period?: string }[] | null;
+  rankings?:
+    | { board_label: string; board_zh: string | null; channel_label: string | null; channel_zh: string | null; position: number; url: string }[]
+    | null;
+  source_rating_count?: number | null;
+  source_comment_count?: number | null;
+  booklist_count?: number | null;
+  pace?: { chapters_per_week: number; paused: boolean; days: number } | null;
+  availability?: { state: string; since: string | null } | null;
+  refreshed_at?: string | null;
+}
+
+/** /sources 里每个平台的说明，只用到数据项的中文名与评分满分。 */
+interface DaoSearchSourceInfo {
+  source: string;
+  score_scale: number | null;
+  metrics: { key: string; zh: string | null }[];
+}
+
+/** 一个平台的数据项中文名与评分满分。 */
+interface PlatformInfo {
+  metricNames: Map<string, string>;
+  scoreScale: number | null;
 }
 
 interface DaoSearchLimits {
@@ -84,7 +110,37 @@ function toCandidate(item: DaoSearchResult): ScrapeCandidate {
   };
 }
 
-function toBook(book: DaoSearchBook): ScrapedBook {
+const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
+/** 更新速度。缺少每周章节数或统计天数时整体为 null，避免显示不完整的数字。 */
+function toPace(pace: DaoSearchBook["pace"]): ScrapeSnapshot["pace"] {
+  const chaptersPerWeek = count(pace?.chapters_per_week);
+  const days = count(pace?.days);
+  return pace && chaptersPerWeek !== null && days !== null ? { chaptersPerWeek, paused: !!pace.paused, days } : null;
+}
+
+function toSnapshot(book: DaoSearchBook, info: PlatformInfo | null): ScrapeSnapshot {
+  return {
+    metrics: (book.metrics ?? [])
+      .filter((m) => m.key && count(m.value) !== null)
+      .map((m) => ({ key: m.key, label: info?.metricNames.get(m.key) ?? m.label ?? m.key, value: m.value, period: m.period ?? null })),
+    scoreScale: info?.scoreScale ?? null,
+    rankings: (book.rankings ?? []).flatMap((r) => {
+      const url = https(r.url);
+      return url && count(r.position) !== null
+        ? [{ label: r.board_zh ?? r.board_label, channel: r.channel_zh ?? r.channel_label, position: r.position, url }]
+        : [];
+    }),
+    ratingCount: count(book.source_rating_count),
+    commentCount: count(book.source_comment_count),
+    booklistCount: count(book.booklist_count),
+    pace: toPace(book.pace),
+    availability: book.availability?.state ? { state: book.availability.state, since: book.availability.since ?? null } : null,
+    refreshedAt: book.refreshed_at ?? null,
+  };
+}
+
+function toBook(book: DaoSearchBook, info: PlatformInfo | null): ScrapedBook {
   const title = zh(book.title);
   const aliases: string[] = [];
   for (const raw of [...(book.other_names ?? []).map((n) => n.name ?? n.name_translated), book.title?.en]) {
@@ -112,6 +168,7 @@ function toBook(book: DaoSearchBook): ScrapedBook {
       const url = https(e.url);
       return url && e.source ? [{ platform: e.source, url }] : [];
     }),
+    snapshot: toSnapshot(book, info),
   };
 }
 
@@ -175,11 +232,11 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
   }
 
   /** 带缓存的读取：缓存未过期时不发请求；过期后带 ETag 重新验证。出错时不写缓存。 */
-  async function getCached<T>(path: string, valid: (data: unknown) => boolean): Promise<T> {
+  async function getCached<T>(path: string, valid: (data: unknown) => boolean, maxAgeMs = DAOSEARCH_CACHE_MS): Promise<T> {
     if (!cache) return get<T>(path);
     const entry = await cache.get(path);
     const usable = entry && valid(entry.data) ? entry : null;
-    if (usable && now() - usable.fetchedAt < DAOSEARCH_CACHE_MS) {
+    if (usable && now() - usable.fetchedAt < maxAgeMs) {
       await cache.touch(path, false);
       return usable.data as T;
     }
@@ -193,6 +250,23 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
     return result.data;
   }
 
+  /**
+   * 数据项的中文名来自 /sources（1 点，缓存 7 天，过期后 304 不扣点）。
+   * 读取失败时不影响刮削，快照里改用作品响应给出的英文名。
+   */
+  async function platformInfo(source: string): Promise<PlatformInfo | null> {
+    try {
+      const sources = await getCached<DaoSearchSourceInfo[]>("/sources", Array.isArray, DAOSEARCH_SOURCES_CACHE_MS);
+      const found = sources.find((s) => s.source === source);
+      if (!found) return null;
+      const metricNames = new Map<string, string>();
+      for (const m of found.metrics ?? []) if (m.key && m.zh) metricNames.set(m.key, m.zh);
+      return { metricNames, scoreScale: count(found.score_scale) };
+    } catch {
+      return null;
+    }
+  }
+
   return {
     id: "daosearch",
     async search(query) {
@@ -203,7 +277,8 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
     async getBook(ref) {
       const { platform, id } = parseRef(ref);
       const isBook = (data: unknown) => !!data && typeof data === "object" && "source_book_id" in data;
-      return toBook(await getCached<DaoSearchBook>(`/books/${platform}/${encodeURIComponent(id)}`, isBook));
+      const book = await getCached<DaoSearchBook>(`/books/${platform}/${encodeURIComponent(id)}`, isBook);
+      return toBook(book, await platformInfo(book.source));
     },
     async check(): Promise<ScrapeQuota> {
       const limits = await get<DaoSearchLimits>("/limits/me");

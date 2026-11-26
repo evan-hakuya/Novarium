@@ -266,6 +266,8 @@ export function createScrapeRoutes() {
       scrapeUrl: scraped.url,
       scrapedAt: now,
       updatedAt: now,
+      // 快照不逐项对比，每次刮削都整体替换（#43）。
+      snapshot: scraped.snapshot,
     };
     const title = scraped.title?.trim();
     if (chosen.has("title") && title) set.title = clip(title, MAX_TITLE_LENGTH);

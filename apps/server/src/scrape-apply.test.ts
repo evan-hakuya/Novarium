@@ -28,6 +28,13 @@ const daoBook = (id: string, author: string) => ({
   mature: true,
   source_url: `https://www.qidian.com/book/${id}/`,
   also_on: [{ source: "zongheng", source_book_id: "9", url: "https://daosearch.io/zongheng/book/9/x" }],
+  metrics: [{ key: "monthly_votes", label: "Monthly votes", value: Number(id) * 100, period: "month" }],
+  rankings: [],
+  source_comment_count: 12,
+  booklist_count: null,
+  pace: null,
+  availability: { state: "available", since: null },
+  refreshed_at: "2026-11-24T10:25:11Z",
 });
 
 const candidate = (ref: string, author: string | null) => ({ ref, author }) as ScrapeCandidate;
@@ -56,7 +63,10 @@ describe("刮削接口", () => {
     const url = String(input);
     requests.push({ url, authorization: new Headers(init?.headers).get("authorization") });
     if (url.includes("/search?")) return Response.json({ data: [daoBook("1", "别人"), daoBook("2", "无名氏")] });
+    if (url.endsWith("/sources")) return Response.json({ data: [{ source: "qidian", score_scale: null, metrics: [{ key: "monthly_votes", zh: "月票" }] }] });
     if (url.includes("/books/qidian/2")) return Response.json({ data: daoBook("2", "无名氏") });
+    // 作品 ID 被合并：fetch 跟随 301 后拿到新 ID 的作品。
+    if (url.includes("/books/qidian/old2")) return Response.json({ data: daoBook("2", "无名氏") });
     // 源站资料被删掉的作品：只读字段都为空；别名里有书名。
     if (url.includes("/books/qidian/3")) {
       return Response.json({
@@ -131,7 +141,34 @@ describe("刮削接口", () => {
       expect(book).toMatchObject({ ref: "qidian/2", intro: "简介2", wordCount: 1000, status: "ongoing" });
       await call("GET", "/api/admin/scrape/books?ref=qidian/2");
       await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/2", fields: ["title"] });
-      expect(requests.map((r) => new URL(r.url).pathname)).toEqual(["/api/v1/search", "/api/v1/books/qidian/2"]);
+      expect(requests.map((r) => new URL(r.url).pathname)).toEqual(["/api/v1/search", "/api/v1/books/qidian/2", "/api/v1/sources"]);
+    });
+
+    it("每次刮削都整体替换快照，不论勾选了哪些项", async () => {
+      await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/2", fields: [] });
+      expect((await detail()).snapshot).toMatchObject({
+        metrics: [{ key: "monthly_votes", label: "月票", value: 200, period: "month" }],
+        commentCount: 12,
+        availability: { state: "available", since: null },
+      });
+      await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/3", fields: [] });
+      expect((await detail()).snapshot).toMatchObject({ metrics: [{ value: 300 }] });
+    });
+
+    it("作品 ID 被合并时，记下新的作品 ID", async () => {
+      expect((await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/old2", fields: [] })).status).toBe(200);
+      expect(await detail()).toMatchObject({ scrapeRef: "qidian/2" });
+    });
+
+    it("作品不存在时提示 not_found，保留现有数据与快照", async () => {
+      await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/2", fields: ["title"] });
+      const before = await detail();
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const res = await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/404", fields: ["title"] });
+      vi.restoreAllMocks();
+      expect(await res.json()).toEqual({ error: "scrape_unavailable", kind: "not_found" });
+      const after = await detail();
+      expect(after).toMatchObject({ title: "书2", scrapeRef: "qidian/2", snapshot: before.snapshot, scrapedAt: before.scrapedAt });
     });
 
     it("写入勾选的字段：标签合并、下载封面、记下刮削来源；封面请求不带密钥", async () => {

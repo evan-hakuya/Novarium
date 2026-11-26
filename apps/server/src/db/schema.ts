@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, primaryKey, index } from "drizzle-orm/sqlite-core";
-import type { Released } from "../scrape";
+import type { Released, ScrapeSnapshot } from "../scrape";
 
 // 访问令牌。鉴权按 tokenHash 查找；token 存明文，供所有者再次查看书源（迁移 0004 之前创建的令牌为空）。
 // 撤销后保留记录，revokedAt 非空；所有者可以删除记录。
@@ -61,6 +61,8 @@ export const books = sqliteTable("books", {
   sourceUrl: text("source_url"),
   /** 其他平台上的同一本书。 */
   alsoOn: text("also_on", { mode: "json" }).$type<{ platform: string; url: string }[]>(),
+  /** 快照（#43）：会随时间变化的平台数据，每次刮削整体替换。刮削日期取 scrapedAt。 */
+  snapshot: text("snapshot", { mode: "json" }).$type<ScrapeSnapshot>(),
   currentVersionId: text("current_version_id").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),

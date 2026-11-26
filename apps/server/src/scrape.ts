@@ -46,6 +46,33 @@ export interface ScrapedBook extends ScrapeCandidate {
   sourceUrl: string | null;
   /** 其他平台上的同一本书。 */
   alsoOn: { platform: string; url: string }[];
+  /** 会随时间变化的平台数据（GLOSSARY「快照」）。每次刮削都整体替换。 */
+  snapshot: ScrapeSnapshot;
+}
+
+/**
+ * 快照：源站自己的数据，按平台给出的名称与周期保存，不跨平台换算。
+ * 刮削日期取书的 scrapedAt。
+ */
+export interface ScrapeSnapshot {
+  /** 平台的数据项，按源站页面的顺序。label 是平台自己的叫法，例如「月票」；没有中文时为英文名。 */
+  metrics: { key: string; label: string; value: number; period: string | null }[];
+  /** 平台评分的满分，例如 10；平台没有评分时为 null。只用于 key 为 score 的数据项。 */
+  scoreScale: number | null;
+  /** 现在所在的榜单。label 是榜单名，channel 是频道名（整个榜单时为 null）；position 从 1 开始；url 是 DaoSearch 上的榜单页。 */
+  rankings: { label: string; channel: string | null; position: number; url: string }[];
+  /** 源站评分人数。 */
+  ratingCount: number | null;
+  /** 源站评论数。 */
+  commentCount: number | null;
+  /** 收录这本书的书单数。 */
+  booklistCount: number | null;
+  /** 近期更新速度：每周章节数；paused 为 true 表示记录期间没有新章节；days 是统计天数。完结或记录不足时为 null。 */
+  pace: { chaptersPerWeek: number; paused: boolean; days: number } | null;
+  /** 源站是否仍有这本书：available、removed_at_source（已下架）、withheld_at_source（暂不显示），可能出现新值。since 为 YYYY-MM-DD。 */
+  availability: { state: string; since: string | null } | null;
+  /** DaoSearch 最近一次读取源站的时间，ISO 8601。 */
+  refreshedAt: string | null;
 }
 
 /** 刮削源当天的用量。刮削源不提供的项为 null。 */
