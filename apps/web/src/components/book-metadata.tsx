@@ -13,7 +13,7 @@ import {
   type BookDetail,
   type BookMetadata,
 } from "@/api/books";
-import { fetchScrapeStatus, scrapeStatusQueryKey } from "@/api/scrape";
+import { applyScrape, fetchScrapeStatus, scrapeStatusQueryKey } from "@/api/scrape";
 import { ScrapeDialog } from "@/components/scrape-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -233,7 +233,15 @@ export function BookMetadataPanel({ book }: { book: Book }) {
         )}
         {error && <p className="text-sm text-destructive">{describeError(error)}</p>}
       </div>
-      <ScrapeDialog book={book} open={scraping} onOpenChange={setScraping} />
+      <ScrapeDialog
+        target={{ title: book.title, author: book.author, intro: book.intro, tags: book.tags, coverUrl: coverUrl(book) }}
+        onApply={async (scraped, fields) => {
+          await applyScrape(book.id, scraped.ref, fields);
+          await refresh();
+        }}
+        open={scraping}
+        onOpenChange={setScraping}
+      />
     </section>
   );
 }

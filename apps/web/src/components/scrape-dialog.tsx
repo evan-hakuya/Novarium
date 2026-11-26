@@ -1,8 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { booksQueryKey, coverUrl, type BookDetail } from "@/api/books";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  applyScrape,
   fetchScrapedBook,
   formatWordCount,
   platformName,
@@ -22,34 +20,56 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-type Book = BookDetail["book"];
+/** 对比页「现有」一列的值：书详情页取这本书，导入页取导入表单。 */
+export interface ScrapeTarget {
+  title: string;
+  author: string;
+  intro: string;
+  tags: string[];
+  /** 现有封面的地址；没有封面时为 null。 */
+  coverUrl: string | null;
+}
 
-/** 刮削对话框（ADR 0006）：搜索 DaoSearch，选定作品，逐项勾选后写入。 */
-export function ScrapeDialog({ book, open, onOpenChange }: { book: Book; open: boolean; onOpenChange: (open: boolean) => void }) {
+/** 所有者在对比页确认后调用，写入勾选的字段。抛出的错误显示在对比页。 */
+export type ScrapeApply = (scraped: ScrapedBook, fields: ScrapeField[]) => Promise<void>;
+
+interface FlowProps {
+  target: ScrapeTarget;
+  onApply: ScrapeApply;
+  onDone: () => void;
+}
+
+/** 刮削对话框（ADR 0006）：搜索 DaoSearch，选定作品，逐项勾选后交给 onApply。 */
+export function ScrapeDialog({
+  target,
+  onApply,
+  open,
+  onOpenChange,
+}: Omit<FlowProps, "onDone"> & { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         {/* 每次打开都从搜索开始。 */}
-        {open && <ScrapeFlow book={book} onDone={() => onOpenChange(false)} />}
+        {open && <ScrapeFlow target={target} onApply={onApply} onDone={() => onOpenChange(false)} />}
       </DialogContent>
     </Dialog>
   );
 }
 
-function ScrapeFlow({ book, onDone }: { book: Book; onDone: () => void }) {
-  const [query, setQuery] = useState(book.title);
+function ScrapeFlow({ target, onApply, onDone }: FlowProps) {
+  const [query, setQuery] = useState(target.title);
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [picked, setPicked] = useState<ScrapeCandidate | null>(null);
   const search = useQuery({
-    queryKey: scrapeSearchQueryKey(submitted ?? "", book.author.trim()),
-    queryFn: () => searchScrape(submitted!, book.author.trim()),
+    queryKey: scrapeSearchQueryKey(submitted ?? "", target.author.trim()),
+    queryFn: () => searchScrape(submitted!, target.author.trim()),
     enabled: submitted !== null,
     staleTime: SCRAPE_STALE_MS,
     gcTime: SCRAPE_STALE_MS,
     retry: false,
   });
 
-  if (picked) return <ScrapeDetail book={book} candidate={picked} onBack={() => setPicked(null)} onDone={onDone} />;
+  if (picked) return <ScrapeDetail target={target} onApply={onApply} candidate={picked} onBack={() => setPicked(null)} onDone={onDone} />;
   const searching = search.isFetching;
 
   return (
@@ -86,7 +106,7 @@ function ScrapeFlow({ book, onDone }: { book: Book; onDone: () => void }) {
                   <span className="font-medium">{result.title ?? "（无书名）"}</span>
                   <span className="text-sm text-muted-foreground">
                     {result.author ?? "佚名"}
-                    {book.author.trim() && result.author?.trim() === book.author.trim() && (
+                    {target.author.trim() && result.author?.trim() === target.author.trim() && (
                       <Badge variant="secondary" className="ml-2">
                         作者一致
                       </Badge>
@@ -119,7 +139,7 @@ function RemoteCover({ url, title, className = "h-20 w-14" }: { url: string | nu
 }
 
 /** 点击候选后才读取详情（每本 1 点），读完进入对比页。 */
-function ScrapeDetail({ book, candidate, onBack, onDone }: { book: Book; candidate: ScrapeCandidate; onBack: () => void; onDone: () => void }) {
+function ScrapeDetail({ candidate, onBack, ...props }: FlowProps & { candidate: ScrapeCandidate; onBack: () => void }) {
   const detail = useQuery({
     queryKey: scrapeBookQueryKey(candidate.ref),
     queryFn: () => fetchScrapedBook(candidate.ref),
@@ -127,7 +147,7 @@ function ScrapeDetail({ book, candidate, onBack, onDone }: { book: Book; candida
     gcTime: SCRAPE_STALE_MS,
     retry: false,
   });
-  if (detail.data) return <ScrapeCompare book={book} scraped={detail.data} onBack={onBack} onDone={onDone} />;
+  if (detail.data) return <ScrapeCompare {...props} scraped={detail.data} onBack={onBack} />;
   return (
     <>
       <DialogTitle>{candidate.title ?? "（无书名）"}</DialogTitle>
@@ -141,8 +161,7 @@ function ScrapeDetail({ book, candidate, onBack, onDone }: { book: Book; candida
   );
 }
 
-function ScrapeCompare({ book, scraped, onBack, onDone }: { book: Book; scraped: ScrapedBook; onBack: () => void; onDone: () => void }) {
-  const queryClient = useQueryClient();
+function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps & { scraped: ScrapedBook; onBack: () => void }) {
   const available: Record<ScrapeField, boolean> = {
     title: !!scraped.title?.trim(),
     author: !!scraped.author?.trim(),
@@ -151,22 +170,19 @@ function ScrapeCompare({ book, scraped, onBack, onDone }: { book: Book; scraped:
     cover: !!scraped.coverUrl,
   };
   const empty: Record<ScrapeField, boolean> = {
-    title: !book.title.trim(),
-    author: !book.author.trim(),
-    intro: !book.intro.trim(),
-    tags: book.tags.length === 0,
-    cover: !book.coverKey,
+    title: !target.title.trim(),
+    author: !target.author.trim(),
+    intro: !target.intro.trim(),
+    tags: target.tags.length === 0,
+    cover: !target.coverUrl,
   };
   // 现有值为空的项默认勾选。
   const [chosen, setChosen] = useState<Set<ScrapeField>>(
     () => new Set((Object.keys(available) as ScrapeField[]).filter((f) => available[f] && empty[f])),
   );
   const apply = useMutation({
-    mutationFn: () => applyScrape(book.id, scraped.ref, [...chosen]),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: booksQueryKey });
-      onDone();
-    },
+    mutationFn: () => onApply(scraped, [...chosen]),
+    onSuccess: onDone,
   });
   const toggle = (field: ScrapeField, on: boolean) =>
     setChosen((prev) => {
@@ -175,22 +191,22 @@ function ScrapeCompare({ book, scraped, onBack, onDone }: { book: Book; scraped:
       else next.delete(field);
       return next;
     });
-  const newTags = scraped.tags.filter((t) => !book.tags.includes(t));
-  const ownCover = coverUrl(book);
+  const newTags = scraped.tags.filter((t) => !target.tags.includes(t));
+  const ownCover = target.coverUrl;
 
   const rows: { field: ScrapeField; label: string; current: ReactNode; next: ReactNode }[] = [
-    { field: "title", label: "书名", current: book.title, next: scraped.title },
-    { field: "author", label: "作者", current: book.author, next: scraped.author },
+    { field: "title", label: "书名", current: target.title, next: scraped.title },
+    { field: "author", label: "作者", current: target.author, next: scraped.author },
     {
       field: "intro",
       label: "简介",
-      current: <span className="line-clamp-6 whitespace-pre-wrap">{book.intro}</span>,
+      current: <span className="line-clamp-6 whitespace-pre-wrap">{target.intro}</span>,
       next: <span className="line-clamp-6 whitespace-pre-wrap">{scraped.intro}</span>,
     },
     {
       field: "tags",
       label: "标签",
-      current: book.tags.join("、"),
+      current: target.tags.join("、"),
       next: newTags.length > 0 ? `合并：${newTags.join("、")}` : scraped.tags.length > 0 ? "没有新标签" : null,
     },
     {
