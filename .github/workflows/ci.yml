@@ -28,3 +28,26 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # 只装 headless shell；runner 镜像自带 Chrome 所需的系统库，跳过 --with-deps 的 apt 安装（一次慢到 4 分半）。
+      - run: pnpm --filter @novarium/web exec playwright install --only-shell chromium
+      - run: pnpm --filter @novarium/web e2e
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7
