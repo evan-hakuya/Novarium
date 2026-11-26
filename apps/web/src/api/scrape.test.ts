@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./books";
-import { formatWait, scrapeFailureReason } from "./scrape";
+import { formatWait, formatWordCount, platformName, scrapeFailureReason } from "./scrape";
 
 describe("刮削错误文字", () => {
   const failed = (kind: string, retryAfterSeconds?: number) => new ApiError(502, "scrape_unavailable", undefined, kind, retryAfterSeconds);
@@ -22,5 +22,14 @@ describe("刮削错误文字", () => {
     expect(formatWait(59)).toBe("59 秒");
     expect(formatWait(61)).toBe("2 分钟");
     expect(formatWait(3601)).toBe("2 小时");
+  });
+
+  it("字数与平台名", () => {
+    expect(formatWordCount(4465000)).toBe("446.5 万字");
+    expect(formatWordCount(20000)).toBe("2 万字");
+    expect(formatWordCount(9999)).toBe("9999 字");
+    expect(formatWordCount(null)).toBeNull();
+    expect(platformName("qidian")).toBe("起点");
+    expect(platformName("new_site")).toBe("new_site");
   });
 });

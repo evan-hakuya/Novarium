@@ -1,10 +1,10 @@
 // DaoSearch 刮削源（ADR 0006，`docs/agents/daosearch.md`）。只从服务端调用。
-import { ScrapeError, type ScrapeCandidate, type ScrapedBook, type ScrapeErrorKind, type ScrapeQuota, type ScrapeSource } from "./scrape";
+import { ScrapeError, type ScrapedBook, type ScrapeErrorKind, type ScrapeQuota, type ScrapeSource } from "./scrape";
 
 export const DAOSEARCH_BASE = "https://daosearch.io/api/v1";
 export const DAOSEARCH_USER_AGENT = "Novarium (+https://github.com/evan-hakuya/Novarium)";
 export const DAOSEARCH_TIMEOUT_MS = 15_000;
-/** 搜索返回的候选数。DaoSearch 上限 25，每次搜索 5 点，与数量无关。 */
+/** 搜索返回的候选数。搜索 5 点与数量无关；补全详情的批量读取每本 1 点。 */
 const SEARCH_LIMIT = 10;
 
 const PLATFORMS = new Set(["qidian", "fanqie", "jjwxc", "faloo", "qimao", "zongheng", "seventeenk", "sfacg", "ciweimao"]);
@@ -19,15 +19,23 @@ interface Text {
 interface DaoSearchResult {
   source: string;
   source_book_id: string;
+}
+
+interface DaoSearchBook extends DaoSearchResult {
   url: string;
   title: Text;
   author: Text;
   cover_url: string | null;
-}
-
-interface DaoSearchBook extends DaoSearchResult {
   synopsis_zh: string | null;
   tags: Text[] | null;
+  word_count: number | null;
+  status: string | null;
+  released: { date: string } | null;
+}
+
+interface DaoSearchBatchItem {
+  status: string;
+  book: DaoSearchBook | null;
 }
 
 interface DaoSearchLimits {
@@ -49,14 +57,19 @@ export function classifyDaoSearchError(status: number, code: string | undefined)
 
 const zh = (text: Text | null | undefined) => text?.zh ?? text?.en ?? null;
 
-function toCandidate(item: DaoSearchResult): ScrapeCandidate {
+function toBook(book: DaoSearchBook): ScrapedBook {
   return {
-    ref: `${item.source}/${item.source_book_id}`,
-    url: item.url,
-    title: zh(item.title),
-    author: zh(item.author),
-    coverUrl: item.cover_url,
-    platform: item.source,
+    ref: `${book.source}/${book.source_book_id}`,
+    url: book.url,
+    title: zh(book.title),
+    author: zh(book.author),
+    intro: book.synopsis_zh,
+    tags: (book.tags ?? []).map(zh).filter((tag): tag is string => !!tag),
+    coverUrl: book.cover_url,
+    platform: book.source,
+    wordCount: book.word_count ?? null,
+    status: book.status === "ongoing" || book.status === "completed" ? book.status : null,
+    releasedAt: book.released?.date ?? null,
   };
 }
 
@@ -100,18 +113,28 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
     id: "daosearch",
     async search(query) {
       const params = new URLSearchParams({ q: query, limit: String(SEARCH_LIMIT) });
-      const data = await get<DaoSearchResult[]>(`/search?${params}`);
-      if (!Array.isArray(data)) throw new ScrapeError("unavailable", "unexpected DaoSearch search response");
-      return data.map(toCandidate);
+      const found = await get<DaoSearchResult[]>(`/search?${params}`);
+      if (!Array.isArray(found)) throw new ScrapeError("unavailable", "unexpected DaoSearch search response");
+      if (found.length === 0) return [];
+      // 搜索结果只有书名、作者与封面；用批量读取补全字数、状态、简介等，按搜索的顺序返回。
+      const ids = found.map((item) => `${item.source}:${item.source_book_id}`).join(",");
+      const items = await get<DaoSearchBatchItem[]>(`/books?${new URLSearchParams({ ids })}`);
+      if (!Array.isArray(items)) throw new ScrapeError("unavailable", "unexpected DaoSearch batch response");
+      const seen = new Set<string>();
+      const books: ScrapedBook[] = [];
+      for (const item of items) {
+        if (!item.book) continue;
+        const book = toBook(item.book);
+        // 两个 ID 合并到同一本书时只保留一次。
+        if (seen.has(book.ref)) continue;
+        seen.add(book.ref);
+        books.push(book);
+      }
+      return books;
     },
     async getBook(ref) {
       const { platform, id } = parseRef(ref);
-      const book = await get<DaoSearchBook>(`/books/${platform}/${encodeURIComponent(id)}`);
-      return {
-        ...toCandidate(book),
-        intro: book.synopsis_zh,
-        tags: (book.tags ?? []).map(zh).filter((tag): tag is string => !!tag),
-      };
+      return toBook(await get<DaoSearchBook>(`/books/${platform}/${encodeURIComponent(id)}`));
     },
     async check(): Promise<ScrapeQuota> {
       const limits = await get<DaoSearchLimits>("/limits/me");

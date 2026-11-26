@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import * as schema from "./db/schema";
 import { addBook, createTestApp, ORIGIN, ownerCookieHeader } from "./test-app";
@@ -67,6 +68,7 @@ function legadoClient(source: BookSource, fetchApi: (url: string, init?: Request
       const res = await get(bookUrl);
       return {
         name: jsonPath(res.body, source.ruleBookInfo.name!),
+        intro: jsonPath(res.body, source.ruleBookInfo.intro!) as string,
         tocUrl: new URL(jsonPath(res.body, source.ruleBookInfo.tocUrl!), bookUrl).toString(),
       };
     },
@@ -136,6 +138,21 @@ describe("书源", () => {
       expect(req.url.startsWith(ORIGIN)).toBe(true);
       expect(req.url).not.toContain("nvr_");
     }
+  });
+
+  it("刮削过的书，简介末尾附 DaoSearch 署名链接；没有刮削过的书不变", async () => {
+    const client = legadoClient((await createToken("我的手机")).bookSource, app.fetchApi);
+    const [book] = await client.search("归藏");
+    expect((await client.bookInfo(book!.bookUrl)).intro).toBe("共 2 章");
+
+    const url = "https://daosearch.io/qidian/book/1/x";
+    await app.deps.db
+      .update(schema.books)
+      .set({ intro: "所有者写的简介", scrapeSource: "daosearch", scrapeRef: "qidian/1", scrapeUrl: url, scrapedAt: new Date() })
+      .where(eq(schema.books.id, "11111111-1111-4111-8111-111111111111"));
+    expect((await client.bookInfo(book!.bookUrl)).intro).toBe(`所有者写的简介\n\n资料来源：DaoSearch ${url}`);
+    const [other] = await client.search("纯净");
+    expect((await client.bookInfo(other!.bookUrl)).intro).toBe("共 1 章");
   });
 
   describe("发现页", () => {

@@ -114,6 +114,7 @@ export function createSourceRoutes() {
     author: books.author,
     intro: books.intro,
     coverKey: books.coverKey,
+    scrapeUrl: books.scrapeUrl,
     tags,
     chapterCount: versions.chapterCount,
     lastChapter,
@@ -125,13 +126,15 @@ export function createSourceRoutes() {
     author: string;
     intro: string;
     coverKey: string | null;
+    scrapeUrl: string | null;
     tags: string;
     chapterCount: number;
     lastChapter: string | null;
   }) => ({
     title: row.title,
     author: row.author,
-    intro: row.intro || `共 ${row.chapterCount} 章`,
+    // 刮削过的书附上资料来源（DaoSearch 条款要求），所有者改过简介后依然附带。
+    intro: (row.intro || `共 ${row.chapterCount} 章`) + (row.scrapeUrl ? `\n\n资料来源：DaoSearch ${row.scrapeUrl}` : ""),
     // Legado 的分类字段，多个值用逗号分隔。
     kind: (JSON.parse(row.tags) as string[]).join(","),
     lastChapter: row.lastChapter ?? "",

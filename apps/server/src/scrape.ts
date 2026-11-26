@@ -4,23 +4,24 @@
 /** 已实现的刮削源。 */
 export type ScrapeSourceId = "daosearch";
 
-/** 搜索得到的候选作品。 */
-export interface ScrapeCandidate {
+/** 刮削源中的一部作品。搜索结果与按 ID 读取的结果是同一结构。 */
+export interface ScrapedBook {
   /** 作品在刮削源中的 ID，交给 getBook 读取。对调用方是不透明的字符串。 */
   ref: string;
   /** 作品在刮削源的页面，展示数据时附上（DaoSearch 条款要求）。 */
   url: string;
   title: string | null;
   author: string | null;
+  intro: string | null;
+  tags: string[];
   coverUrl: string | null;
   /** 作品所在的原发平台，例如 qidian。 */
   platform: string;
-}
-
-/** 按 ID 读取到的作品。 */
-export interface ScrapedBook extends ScrapeCandidate {
-  intro: string | null;
-  tags: string[];
+  /** 字数（汉字）。 */
+  wordCount: number | null;
+  status: "ongoing" | "completed" | null;
+  /** 首发日期，精度不定：YYYY-MM-DD、YYYY-MM 或 YYYY。 */
+  releasedAt: string | null;
 }
 
 /** 刮削源当天的用量。刮削源不提供的项为 null。 */
@@ -33,7 +34,8 @@ export interface ScrapeQuota {
 
 export interface ScrapeSource {
   readonly id: ScrapeSourceId;
-  search(query: string): Promise<ScrapeCandidate[]>;
+  /** 按书名、作者或书页链接搜索，返回带详情的候选，最佳匹配在前。 */
+  search(query: string): Promise<ScrapedBook[]>;
   getBook(ref: string): Promise<ScrapedBook>;
   /** 测试连接：确认密钥有效并返回当天用量，不消耗点数。 */
   check(): Promise<ScrapeQuota>;
