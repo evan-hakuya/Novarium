@@ -1,7 +1,7 @@
 name: Docker
 
 # 把自部署镜像发布到 GHCR：main 的每次提交发布 latest 与 sha-<短哈希>，v* 标签发布对应版本号。
-# PR 改动镜像内容时只构建 amd64 并启动容器做冒烟检查，不推送。
+# PR 改动镜像内容时，amd64 与 arm64 各在原生 runner 上构建并启动容器做冒烟检查，不推送。
 on:
   push:
     branches: [main]
@@ -24,19 +24,20 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  image:
+  publish:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@v4
-        if: github.event_name != 'pull_request'
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
-        if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -51,7 +52,6 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
       - uses: docker/build-push-action@v7
-        if: github.event_name != 'pull_request'
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -60,19 +60,41 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      # PR：只构建 amd64，加载到本机，不推送。load 不支持多平台，所以和上面分成两步。
+
+  smoke:
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    name: smoke (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      SMOKE_PASSWORD: smoke-test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      # 原生平台构建，load 到本机后启动；load 不支持多平台，所以每个平台一个任务。
       - uses: docker/build-push-action@v7
-        if: github.event_name == 'pull_request'
         with:
           context: .
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           load: true
           tags: novarium:pr
           cache-from: type=gha
       - name: Smoke test the image
-        if: github.event_name == 'pull_request'
+        env:
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          docker run -d --name novarium -p 8080:8080 -e OWNER_PASSWORD=ci-smoke novarium:pr
+          arch=$(docker image inspect novarium:pr --format '{{.Architecture}}')
+          echo "runner $(uname -m), image $arch, expected ${PLATFORM#linux/}"
+          [ "$arch" = "${PLATFORM#linux/}" ] || { echo "::error::image is $arch, expected ${PLATFORM#linux/}"; exit 1; }
+          docker run -d --name novarium -p 8080:8080 -e OWNER_PASSWORD="$SMOKE_PASSWORD" novarium:pr
           for i in $(seq 30); do
             if curl -sf http://localhost:8080/api/health | grep -q '"ok":true'; then break; fi
             if [ "$i" -eq 30 ]; then echo "::error::/api/health did not become ok"; docker logs novarium; exit 1; fi
