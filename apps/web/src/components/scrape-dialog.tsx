@@ -45,12 +45,7 @@ export function ScrapeDialog({
   onApply,
   open,
   onOpenChange,
-}: {
-  target: ScrapeTarget;
-  onApply: ScrapeApply;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
+}: Omit<FlowProps, "onDone"> & { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>

@@ -43,10 +43,11 @@ interface Source {
 
 const stepText = { original: "上传原稿", text: "上传整理后的正文", index: "保存章节索引" } as const;
 
-/** 导入页选定的刮削结果。fields 只含导入成功后才能写入的标签与封面。 */
+/** 导入页选定的刮削结果。fields 只含导入成功后才能写入的标签与封面；before 是填入前的表单值，取消时恢复。 */
 interface ScrapePick {
   scraped: ScrapedBook;
   fields: ScrapeField[];
+  before: { title: string; author: string; intro: string };
 }
 
 const lateFieldText: Partial<Record<ScrapeField, string>> = { tags: "标签", cover: "封面" };
@@ -70,7 +71,7 @@ export function ImportPage() {
   const [scraping, setScraping] = useState(false);
   const [scrapePick, setScrapePick] = useState<ScrapePick | null>(null);
   // 书已导入、但写入刮削的标签或封面失败时，显示原因与书的链接。
-  const [scrapeFailure, setScrapeFailure] = useState<{ bookId: string; reason: string } | null>(null);
+  const [scrapeFailure, setScrapeFailure] = useState<{ bookId: string; what: string; reason: string } | null>(null);
 
   async function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -127,19 +128,7 @@ export function ImportPage() {
       );
       await review.clearCache();
       await queryClient.invalidateQueries({ queryKey: booksQueryKey });
-      if (scrapePick) {
-        // 读取作品走服务端缓存，不额外消耗点数。失败时书照常导入。
-        try {
-          await applyScrape(id, scrapePick.scraped.ref, scrapePick.fields);
-          await queryClient.invalidateQueries({ queryKey: booksQueryKey });
-        } catch (e) {
-          reset();
-          setSource(null);
-          setScrapePick(null);
-          setScrapeFailure({ bookId: id, reason: scrapeFailureReason(e) });
-          return;
-        }
-      }
+      if (!(await applyPickAfterImport(id))) return;
       await navigate({ to: "/books/$bookId", params: { bookId: id } });
     } catch (e) {
       setError(describeError(e));
@@ -163,6 +152,7 @@ export function ImportPage() {
       );
       await review.clearCache();
       await queryClient.invalidateQueries({ queryKey: ["books"] });
+      if (!(await applyPickAfterImport(bookId))) return;
       await navigate({ to: "/books/$bookId", params: { bookId } });
     } catch (e) {
       setError(describeError(e));
@@ -171,15 +161,47 @@ export function ImportPage() {
     }
   }
 
+  /**
+   * 导入成功后写入选定的标签与封面，并记下刮削来源。读取作品通常命中服务端缓存，不再扣点。
+   * 失败时书照常导入，页面显示原因与书的链接，返回 false。
+   */
+  async function applyPickAfterImport(bookId: string): Promise<boolean> {
+    if (!scrapePick) return true;
+    try {
+      await applyScrape(bookId, scrapePick.scraped.ref, scrapePick.fields);
+      await queryClient.invalidateQueries({ queryKey: booksQueryKey });
+      return true;
+    } catch (e) {
+      const what =
+        scrapePick.fields.length > 0 ? `写入刮削的${scrapePick.fields.map((f) => lateFieldText[f]).join("、")}` : "记下刮削来源";
+      reset();
+      setSource(null);
+      setScrapePick(null);
+      setScrapeFailure({ bookId, what, reason: scrapeFailureReason(e) });
+      return false;
+    }
+  }
+
+  /** 取消刮削：恢复填入前的书名、作者、简介，导入时不写入刮削结果。 */
+  function cancelScrape() {
+    if (!scrapePick) return;
+    setTitle(scrapePick.before.title);
+    setAuthor(scrapePick.before.author);
+    setIntro(scrapePick.before.intro);
+    setScrapePick(null);
+  }
+
   const uploading = uploadStep !== null;
 
   /** 对比页确认后：书名、作者、简介写进表单；标签与封面记下，导入成功后写入。 */
   const onScrapeApply: ScrapeApply = async (scraped, fields) => {
     const chosen = new Set(fields);
+    // 再次刮削时保留最初的表单值，取消时恢复到刮削前。
+    const before = scrapePick?.before ?? { title, author, intro };
     if (chosen.has("title") && scraped.title?.trim()) setTitle(scraped.title.trim());
     if (chosen.has("author") && scraped.author?.trim()) setAuthor(scraped.author.trim());
     if (chosen.has("intro") && scraped.intro?.trim()) setIntro(scraped.intro.trim());
-    setScrapePick({ scraped, fields: fields.filter((f) => f in lateFieldText) });
+    setScrapePick({ scraped, fields: fields.filter((f) => f in lateFieldText), before });
   };
   const scrapeConfigured = !!scrapeStatus.data?.configured;
   const busy = processing || uploading;
@@ -217,7 +239,7 @@ export function ImportPage() {
       {error && <p className="whitespace-pre-wrap text-sm text-destructive">{error}</p>}
       {scrapeFailure && (
         <p className="text-sm text-destructive">
-          书已导入，但写入刮削的标签或封面失败：{scrapeFailure.reason}。请到
+          书已导入，但{scrapeFailure.what}失败：{scrapeFailure.reason}。请到
           <Link to="/books/$bookId" params={{ bookId: scrapeFailure.bookId }} className="underline">
             书详情页
           </Link>
@@ -266,7 +288,7 @@ export function ImportPage() {
                 </a>
                 {scrapePick.fields.length > 0 && `。导入后写入${scrapePick.fields.map((f) => lateFieldText[f]).join("、")}`}
               </span>
-              <Button size="sm" variant="ghost" disabled={uploading} onClick={() => setScrapePick(null)}>
+              <Button size="sm" variant="ghost" disabled={uploading} onClick={cancelScrape}>
                 取消刮削
               </Button>
             </div>
