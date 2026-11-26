@@ -6,6 +6,7 @@ import { ChapterBrowser, ChapterText } from "@/components/chapter-browser";
 import { BookMetadataPanel } from "@/components/book-metadata";
 import { STEPS } from "@/components/process-options-form";
 import { Button } from "@/components/ui/button";
+import { isAdvisory, itemKind, reviewNumbers } from "@/lib/number-review";
 
 const route = getRouteApi("/owner/books/$bookId");
 
@@ -37,6 +38,7 @@ export function BookPage() {
         </Button>
       </div>
       <BookMetadataPanel key={`${book.id}:${book.title}:${book.coverKey}`} book={book} />
+      <NumberNotice bookId={bookId} chapters={chapters} options={version.options} />
       <ChapterBrowser chapters={chapters} renderContent={(c) => <RemoteChapter bookId={bookId} order={c.order} />} />
     </div>
   );
@@ -51,6 +53,34 @@ function RemoteChapter({ bookId, order }: { bookId: string; order: number }) {
   if (chapter.isPending) return <p className="text-sm text-muted-foreground">加载中</p>;
   if (chapter.isError) return <p className="text-sm text-destructive">{describeError(chapter.error)}</p>;
   return <ChapterText text={chapter.data.content} />;
+}
+
+/** 当前版本中还没忽略的缺号与重复编号。导入时不挡住，这里提醒所有者到重新整理中检查。 */
+function NumberNotice({
+  bookId,
+  chapters,
+  options,
+}: {
+  bookId: string;
+  chapters: { order: number; title: string; number: number | null; volume: string | null }[];
+  options: Partial<ProcessOptions>;
+}) {
+  const advisory = reviewNumbers(chapters, { numberIgnores: options.numberIgnores ?? [], numberFixes: options.numberFixes ?? [] }).filter(
+    (i) => i.status === "pending" && isAdvisory(i),
+  );
+  const missing = advisory.filter((i) => itemKind(i) === "missing").length;
+  const duplicate = advisory.length - missing;
+  const parts = [missing > 0 && `${missing} 处缺号`, duplicate > 0 && `${duplicate} 处重复编号`].filter(Boolean);
+  if (parts.length === 0) return null;
+  return (
+    <p className="text-sm text-amber-700 dark:text-amber-400">
+      当前版本有 {parts.join("、")}未忽略，可能是原稿本身的问题。可以在
+      <Link to="/books/$bookId/reprocess" params={{ bookId }} className="underline underline-offset-2">
+        重新整理
+      </Link>
+      中检查或忽略。
+    </p>
+  );
 }
 
 /** 当前版本的整理选项摘要。 */

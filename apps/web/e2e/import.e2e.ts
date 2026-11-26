@@ -63,11 +63,11 @@ test("imports a large manuscript", async ({ page }) => {
     await page.setViewportSize(size);
   });
 
-  await test.step("anomaly panel names each row and lists only present types", async () => {
+  await test.step("anomaly panel names each row; a missing number does not block import", async () => {
     await expect(page.getByRole("checkbox", { name: `缺号：缺少第 ${MISSING} 章` })).toBeVisible();
     await expect(page.getByRole("tab", { name: "缺号 1" })).toBeVisible();
     await expect(page.getByRole("tab", { name: /^乱序/ })).toHaveCount(0);
-    await page.getByRole("button", { name: "忽略", exact: true }).click();
+    await expect(page.getByText("1 处缺号或重复编号待检查，不影响继续")).toBeVisible();
   });
 
   await test.step("the page follows the import steps", async () => {
@@ -83,4 +83,5 @@ test("imports a large manuscript", async ({ page }) => {
   await importButton.click();
   await expect(page).toHaveURL(/\/books\/[^/]+$/, { timeout: 60_000 });
   await expect(page.getByText("E2E 测试书").first()).toBeVisible();
+  await expect(page.getByText("当前版本有 1 处缺号未忽略")).toBeVisible();
 });

@@ -3,8 +3,8 @@ import {
   isFixable,
   needsNoAction,
   parseOutOfOrderKey,
-  type ChapterDraft,
   type NumberAnomaly,
+  type NumberedChapter,
   type ProcessOptions,
 } from "@novarium/core";
 import type { AiReviewItem } from "@/lib/ai-review";
@@ -23,7 +23,10 @@ export type ReviewItem = NumberReviewItem | AiReviewItem;
 export const isAiItem = (item: ReviewItem): item is AiReviewItem => "ai" in item;
 
 /** 把当前预览的异常与整理选项中的修复、忽略记录合在一起，得到每条异常的处理状态。 */
-export function reviewNumbers(chapters: readonly ChapterDraft[], options: ProcessOptions): NumberReviewItem[] {
+export function reviewNumbers(
+  chapters: readonly NumberedChapter[],
+  options: Pick<ProcessOptions, "numberIgnores" | "numberFixes">,
+): NumberReviewItem[] {
   const anomalies = findNumberAnomalies(chapters);
   const ignored = new Set(options.numberIgnores);
   const items: NumberReviewItem[] = anomalies.map((anomaly) => ({
@@ -41,7 +44,13 @@ export function reviewNumbers(chapters: readonly ChapterDraft[], options: Proces
   return items;
 }
 
-export const countPending = (items: readonly ReviewItem[]) => items.filter((i) => i.status === "pending").length;
+/** 只提示、不挡住导入的异常：缺号与重复编号无法自动修复，多来自原稿本身。 */
+export const isAdvisory = (item: ReviewItem) =>
+  !isAiItem(item) && item.status !== "fixed" && (item.anomaly.kind === "missing" || item.anomaly.kind === "duplicate");
+
+/** 挡住导入与保存的条数：待处理的乱序与 AI 复核结果。 */
+export const countPending = (items: readonly ReviewItem[]) =>
+  items.filter((i) => i.status === "pending" && !isAdvisory(i)).length;
 
 export type ReviewKind = NumberAnomaly["kind"] | AiReviewItem["ai"]["kind"];
 
