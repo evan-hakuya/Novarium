@@ -40,7 +40,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @novarium/web exec playwright install --with-deps chromium
+      # 只装 headless shell；runner 镜像自带 Chrome 所需的系统库，跳过 --with-deps 的 apt 安装（一次慢到 4 分半）。
+      - run: pnpm --filter @novarium/web exec playwright install --only-shell chromium
       - run: pnpm --filter @novarium/web e2e
       - uses: actions/upload-artifact@v7
         if: failure()
