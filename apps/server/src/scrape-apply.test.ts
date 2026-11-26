@@ -19,7 +19,15 @@ const daoBook = (id: string, author: string) => ({
   tags: [{ en: null, zh: "悬疑" }, { en: null, zh: "新标签" }],
   word_count: 1000,
   status: "ongoing",
-  released: null,
+  released: { date: "2019-05", precision: "month", estimated: true },
+  genre: { en: null, zh: "玄幻" },
+  subgenre: { en: null, zh: "异世大陆" },
+  other_names: [{ name: "旧名", name_translated: null }, { name: "自己加的别名", name_translated: null }],
+  updated_at: "2025-08-14T01:00:00Z",
+  facets: [{ key: "signed", label: "Signed", value: "true", value_label: "Signed" }],
+  mature: true,
+  source_url: `https://www.qidian.com/book/${id}/`,
+  also_on: [{ source: "zongheng", source_book_id: "9", url: "https://daosearch.io/zongheng/book/9/x" }],
 });
 
 const candidate = (ref: string, author: string | null) => ({ ref, author }) as ScrapeCandidate;
@@ -136,6 +144,38 @@ describe("刮削接口", () => {
       const book = await detail();
       expect(book).toMatchObject({ title: "书2", intro: "", coverKey: null, scrapeRef: "qidian/2" });
       expect([...book.tags].sort()).toEqual(["悬疑", "自己加的"].sort());
+      expect(book).toMatchObject({ genre: null, sourceWordCount: null, aliases: [], mature: null });
+    });
+
+    it("写入描述字段：别名合并进现有别名，只读字段整体替换", async () => {
+      await call("PATCH", `/api/admin/books/${BOOK_ID}`, { aliases: ["自己加的别名"] });
+      const fields = ["genre", "subgenre", "status", "aliases", "authorEn", "wordCount", "released", "updatedAt", "facets", "mature", "sourceUrl", "alsoOn"];
+      expect((await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/2", fields })).status).toBe(200);
+      expect(await detail()).toMatchObject({
+        genre: "玄幻",
+        subgenre: "异世大陆",
+        serialStatus: "ongoing",
+        aliases: ["自己加的别名", "旧名"],
+        authorEn: null,
+        sourceWordCount: 1000,
+        released: { date: "2019-05", precision: "month", estimated: true },
+        sourceUpdatedAt: "2025-08-14T01:00:00.000Z",
+        facets: [{ key: "signed", label: "Signed", value: "Signed" }],
+        mature: true,
+        sourceUrl: "https://www.qidian.com/book/2/",
+        alsoOn: [{ platform: "zongheng", url: "https://daosearch.io/zongheng/book/9/x" }],
+      });
+    });
+
+    it("所有者编辑分类、子分类、连载状态与别名；拒绝无效值", async () => {
+      const ok = await call("PATCH", `/api/admin/books/${BOOK_ID}`, { genre: " 都市 ", subgenre: "", serialStatus: "completed", aliases: [" 甲 ", "甲", "乙"] });
+      expect(ok.status).toBe(200);
+      expect(await detail()).toMatchObject({ genre: "都市", subgenre: null, serialStatus: "completed", aliases: ["甲", "乙"] });
+      expect((await call("PATCH", `/api/admin/books/${BOOK_ID}`, { serialStatus: null })).status).toBe(200);
+      expect(await detail()).toMatchObject({ serialStatus: null });
+      for (const body of [{ genre: 1 }, { genre: "长".repeat(51) }, { serialStatus: "paused" }, { aliases: "甲" }, { aliases: Array(21).fill(0).map((_, i) => `a${i}`) }]) {
+        expect((await call("PATCH", `/api/admin/books/${BOOK_ID}`, body)).status).toBe(400);
+      }
     });
 
     it.each([

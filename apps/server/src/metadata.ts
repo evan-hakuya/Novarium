@@ -13,6 +13,10 @@ export const MAX_TAG_LENGTH = 20;
 export const MAX_INTRO_LENGTH = 5000;
 export const MAX_TITLE_LENGTH = 200;
 export const MAX_AUTHOR_LENGTH = 100;
+export const MAX_ALIASES = 20;
+export const MAX_ALIAS_LENGTH = 200;
+export const MAX_GENRE_LENGTH = 50;
+export const SERIAL_STATUSES = ["ongoing", "completed"] as const;
 
 /** 按文件头判断图片类型，不信任请求的 Content-Type。 */
 export function sniffImageType(bytes: Uint8Array): string | null {
@@ -35,6 +39,21 @@ export function parseTags(value: unknown): string[] | null {
 export async function getTags(db: AppDeps["db"], bookId: string): Promise<string[]> {
   const rows = await db.select({ tag: bookTags.tag }).from(bookTags).where(eq(bookTags.bookId, bookId)).orderBy(bookTags.tag);
   return rows.map((r) => r.tag);
+}
+
+/** 校验并规范化别名：去首尾空白、去重、去空。 */
+export function parseAliases(value: unknown): string[] | null {
+  if (!Array.isArray(value) || !value.every((t) => typeof t === "string")) return null;
+  const aliases = [...new Set((value as string[]).map((t) => t.trim()).filter(Boolean))];
+  if (aliases.length > MAX_ALIASES || aliases.some((t) => t.length > MAX_ALIAS_LENGTH)) return null;
+  return aliases;
+}
+
+/** 分类与子分类：字符串，空字符串表示清空。返回 undefined 表示无效。 */
+function parseGenre(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length > MAX_GENRE_LENGTH) return undefined;
+  return value.trim() || null;
 }
 
 /**
@@ -88,6 +107,24 @@ export function createMetadataRoutes() {
     if ("tags" in body) {
       tags = parseTags(body.tags);
       if (!tags) return c.json({ error: "invalid_tags" }, 400);
+    }
+    for (const key of ["genre", "subgenre"] as const) {
+      if (!(key in body)) continue;
+      const genre = parseGenre(body[key]);
+      if (genre === undefined) return c.json({ error: `invalid_${key}` }, 400);
+      set[key] = genre;
+    }
+    if ("serialStatus" in body) {
+      const status = body.serialStatus;
+      if (status !== null && !SERIAL_STATUSES.includes(status as (typeof SERIAL_STATUSES)[number])) {
+        return c.json({ error: "invalid_serial_status" }, 400);
+      }
+      set.serialStatus = status as string | null;
+    }
+    if ("aliases" in body) {
+      const aliases = parseAliases(body.aliases);
+      if (!aliases) return c.json({ error: "invalid_aliases" }, 400);
+      set.aliases = aliases;
     }
     if (!(await db.select({ id: books.id }).from(books).where(eq(books.id, bookId)).get())) {
       return c.json({ error: "not_found" }, 404);

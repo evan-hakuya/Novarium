@@ -5,6 +5,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   booksQueryKey,
   describeError,
+  emptyDescription,
   findDuplicates,
   formatBytes,
   importBook,
@@ -43,14 +44,30 @@ interface Source {
 
 const stepText = { original: "上传原稿", text: "上传整理后的正文", index: "保存章节索引" } as const;
 
-/** 导入页选定的刮削结果。fields 只含导入成功后才能写入的标签与封面；before 是填入前的表单值，取消时恢复。 */
+/** 导入页选定的刮削结果。fields 只含导入成功后才写入的字段（表单以外的）；before 是填入前的表单值，取消时恢复。 */
 interface ScrapePick {
   scraped: ScrapedBook;
   fields: ScrapeField[];
   before: { title: string; author: string; intro: string };
 }
 
-const lateFieldText: Partial<Record<ScrapeField, string>> = { tags: "标签", cover: "封面" };
+/** 导入成功后才写入的字段。书名、作者、简介直接填进表单。 */
+const lateFieldText: Partial<Record<ScrapeField, string>> = {
+  tags: "标签",
+  cover: "封面",
+  genre: "分类",
+  subgenre: "子分类",
+  status: "连载状态",
+  aliases: "别名",
+  authorEn: "作者英文名",
+  wordCount: "源站字数",
+  released: "首发日期",
+  updatedAt: "源站更新",
+  facets: "平台标记",
+  mature: "成人向",
+  sourceUrl: "源站链接",
+  alsoOn: "其他平台",
+};
 
 export function ImportPage() {
   const queryClient = useQueryClient();
@@ -295,7 +312,7 @@ export function ImportPage() {
           )}
           {scrapeConfigured && (
             <ScrapeDialog
-              target={{ title, author, intro, tags: [], coverUrl: null }}
+              target={{ title, author, intro, tags: [], coverUrl: null, ...emptyDescription }}
               onApply={onScrapeApply}
               open={scraping}
               onOpenChange={setScraping}

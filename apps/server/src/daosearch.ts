@@ -40,7 +40,15 @@ interface DaoSearchBook extends DaoSearchResult {
   tags: Text[] | null;
   word_count: number | null;
   status: string | null;
-  released: { date: string } | null;
+  released: { date: string; precision: string; estimated: boolean } | null;
+  genre?: Text | null;
+  subgenre?: Text | null;
+  other_names?: { name: string | null; name_translated: string | null }[] | null;
+  updated_at?: string | null;
+  facets?: { key: string; label: string; value_label: string }[] | null;
+  mature?: boolean;
+  source_url?: string | null;
+  also_on?: { source: string; url: string }[] | null;
 }
 
 interface DaoSearchLimits {
@@ -61,6 +69,8 @@ export function classifyDaoSearchError(status: number, code: string | undefined)
 }
 
 const zh = (text: Text | null | undefined) => text?.zh ?? text?.en ?? null;
+/** 只接受 https 链接，避免把 javascript: 等地址放进页面。 */
+const https = (url: string | null | undefined) => (url && /^https:\/\//.test(url) ? url : null);
 
 function toCandidate(item: DaoSearchResult): ScrapeCandidate {
   return {
@@ -74,13 +84,33 @@ function toCandidate(item: DaoSearchResult): ScrapeCandidate {
 }
 
 function toBook(book: DaoSearchBook): ScrapedBook {
+  const title = zh(book.title);
+  const aliases: string[] = [];
+  for (const raw of [...(book.other_names ?? []).map((n) => n.name ?? n.name_translated), book.title?.en]) {
+    const name = raw?.trim();
+    if (name && name !== title && !aliases.includes(name)) aliases.push(name);
+  }
   return {
     ...toCandidate(book),
     intro: book.synopsis_zh,
     tags: (book.tags ?? []).map(zh).filter((tag): tag is string => !!tag),
     wordCount: book.word_count ?? null,
     status: book.status === "ongoing" || book.status === "completed" ? book.status : null,
-    releasedAt: book.released?.date ?? null,
+    released: book.released
+      ? { date: book.released.date, precision: book.released.precision, estimated: !!book.released.estimated }
+      : null,
+    genre: zh(book.genre),
+    subgenre: zh(book.subgenre),
+    aliases,
+    authorEn: book.author?.en ?? null,
+    updatedAt: book.updated_at ?? null,
+    facets: (book.facets ?? []).filter((f) => f.label && f.value_label).map((f) => ({ key: f.key, label: f.label, value: f.value_label })),
+    mature: typeof book.mature === "boolean" ? book.mature : null,
+    sourceUrl: https(book.source_url),
+    alsoOn: (book.also_on ?? []).flatMap((e) => {
+      const url = https(e.url);
+      return url && e.source ? [{ platform: e.source, url }] : [];
+    }),
   };
 }
 

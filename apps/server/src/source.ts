@@ -53,6 +53,7 @@ export function buildBookSource({
     author: "$.author",
     kind: "$.kind",
     intro: "$.intro",
+    wordCount: "$.wordCount",
     lastChapter: "$.lastChapter",
     coverUrl: "$.coverUrl",
     bookUrl: "$.url",
@@ -79,6 +80,7 @@ export function buildBookSource({
       author: "$.author",
       kind: "$.kind",
       intro: "$.intro",
+      wordCount: "$.wordCount",
       lastChapter: "$.lastChapter",
       coverUrl: "$.coverUrl",
       tocUrl: "$.tocUrl",
@@ -96,6 +98,12 @@ export function buildBookSource({
 }
 
 // 阅读客户端用的只读 API。挂在 /api/source 下，受访问令牌保护。
+/** 书源的字数，例如「446.8万字」；没有字数时为空字符串。 */
+export function formatWordCount(count: number | null): string {
+  if (count === null || count <= 0) return "";
+  return count >= 10_000 ? `${Number((count / 10_000).toFixed(1))}万字` : `${count}字`;
+}
+
 export function createSourceRoutes() {
   const app = new Hono<Env>();
 
@@ -115,6 +123,9 @@ export function createSourceRoutes() {
     intro: books.intro,
     coverKey: books.coverKey,
     scrapeUrl: books.scrapeUrl,
+    genre: books.genre,
+    subgenre: books.subgenre,
+    sourceWordCount: books.sourceWordCount,
     tags,
     chapterCount: versions.chapterCount,
     lastChapter,
@@ -127,6 +138,9 @@ export function createSourceRoutes() {
     intro: string;
     coverKey: string | null;
     scrapeUrl: string | null;
+    genre: string | null;
+    subgenre: string | null;
+    sourceWordCount: number | null;
     tags: string;
     chapterCount: number;
     lastChapter: string | null;
@@ -135,15 +149,17 @@ export function createSourceRoutes() {
     author: row.author,
     // 刮削过的书附上资料来源（DaoSearch 条款要求），所有者改过简介后依然附带。
     intro: (row.intro || `共 ${row.chapterCount} 章`) + (row.scrapeUrl ? `\n\n资料来源：DaoSearch ${row.scrapeUrl}` : ""),
-    // Legado 的分类字段，多个值用逗号分隔。
-    kind: (JSON.parse(row.tags) as string[]).join(","),
+    // Legado 的分类字段，多个值用逗号分隔：分类、子分类、标签。
+    kind: [row.genre, row.subgenre, ...(JSON.parse(row.tags) as string[])].filter(Boolean).join(","),
+    // 源站字数，例如「446.8万字」。没有刮削过时为空。
+    wordCount: formatWordCount(row.sourceWordCount),
     lastChapter: row.lastChapter ?? "",
     // 地址含封面的上传 ID：换封面后地址随之改变，阅读客户端不会用缓存的旧图。
     coverUrl: row.coverKey ? `${COVER_BASE}/${row.id}/${row.coverKey.split("/").pop()}` : "",
     url: bookUrl(row.id),
   });
 
-  // 按书名或作者做包含匹配，不区分大小写。
+  // 按书名、作者或别名做包含匹配，不区分大小写。
   app.get("/search", async (c) => {
     const { db } = c.get("deps");
     const q = (c.req.query("q") ?? "").trim();
@@ -154,7 +170,14 @@ export function createSourceRoutes() {
       .select(summaryFields)
       .from(books)
       .innerJoin(versions, eq(versions.id, books.currentVersionId))
-      .where(or(sql`${books.title} like ${pattern} escape '\\'`, sql`${books.author} like ${pattern} escape '\\'`))
+      .where(
+        or(
+          sql`${books.title} like ${pattern} escape '\\'`,
+          sql`${books.author} like ${pattern} escape '\\'`,
+          // aliases 是 JSON 数组；按其中每个值匹配，不匹配引号与逗号。
+          sql`exists (select 1 from json_each(${books.aliases}) where json_each.value like ${pattern} escape '\\')`,
+        ),
+      )
       .orderBy(desc(books.createdAt))
       .limit(SEARCH_PAGE_SIZE)
       .offset((page - 1) * SEARCH_PAGE_SIZE);

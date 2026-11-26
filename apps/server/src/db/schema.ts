@@ -38,6 +38,28 @@ export const books = sqliteTable("books", {
   scrapeRef: text("scrape_ref"),
   scrapeUrl: text("scrape_url"),
   scrapedAt: integer("scraped_at", { mode: "timestamp_ms" }),
+  /** 描述字段（#42）。分类、子分类、连载状态与别名可由所有者编辑；其余只读，刮削时写入。没有刮削过时为空。 */
+  genre: text("genre"),
+  subgenre: text("subgenre"),
+  /** ongoing 或 completed。 */
+  serialStatus: text("serial_status"),
+  /** 别名：曾用名、源站给出的其他书名与英文书名。 */
+  aliases: text("aliases", { mode: "json" }).$type<string[]>().notNull().default([]),
+  authorEn: text("author_en"),
+  /** 源站字数（汉字）。 */
+  sourceWordCount: integer("source_word_count"),
+  /** 首发日期：date 为 YYYY-MM-DD、YYYY-MM 或 YYYY；precision 为 day、month 或 year；estimated 表示是估算。 */
+  released: text("released", { mode: "json" }).$type<{ date: string; precision: string; estimated: boolean }>(),
+  /** 源站最后更新章节的时间。 */
+  sourceUpdatedAt: integer("source_updated_at", { mode: "timestamp_ms" }),
+  /** 平台标记，例如 { key: "signed", label: "Signed", value: "Signed" }。 */
+  facets: text("facets", { mode: "json" }).$type<{ key: string; label: string; value: string }[]>(),
+  /** 成人向。null 表示不知道。 */
+  mature: integer("mature", { mode: "boolean" }),
+  /** 这本书在源站的页面。 */
+  sourceUrl: text("source_url"),
+  /** 其他平台上的同一本书。 */
+  alsoOn: text("also_on", { mode: "json" }).$type<{ platform: string; url: string }[]>(),
   currentVersionId: text("current_version_id").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
