@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler d1 migrations apply DB --local && wrangler dev",
+    "dev:bg": "pnpm --filter @novarium/web build >/dev/null && pnpm dev:stop && wrangler d1 migrations apply DB --local >/dev/null && mkdir -p /tmp/novarium-tickets && (nohup wrangler dev --ip 0.0.0.0 --port 8787 > /tmp/novarium-tickets/wrangler.log 2>&1 &) && for i in $(seq 60); do curl -sf http://localhost:8787/api/health >/dev/null && echo 'ready: http://localhost:8787, log: /tmp/novarium-tickets/wrangler.log' && exit 0; sleep 1; done; tail -20 /tmp/novarium-tickets/wrangler.log; exit 1",
+    "dev:stop": "pkill -f \"$(cd ../.. && pwd)/node_modules/.*(workerd|wrangler-dist)\"; sleep 1; true",
     "dev:node": "pnpm build && node dist/node.js",
     "build": "esbuild src/node.ts --bundle --platform=node --target=node24 --format=esm --external:better-sqlite3 --outfile=dist/node.js",
     "typecheck": "tsc -p tsconfig.worker.json && tsc -p tsconfig.node.json && tsc -p tsconfig.test.json",
