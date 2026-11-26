@@ -9,7 +9,7 @@ export const SESSION_COOKIE = "novarium_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const encoder = new TextEncoder();
 
-async function hmacKey(ownerPassword: string): Promise<CryptoKey> {
+async function hmacKey(ownerPassword: string) {
   const secret = await crypto.subtle.digest("SHA-256", encoder.encode(`novarium-session:${ownerPassword}`));
   return crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
 }
