@@ -353,7 +353,10 @@ export function ImportPage() {
               />
               {!author.trim() && (
                 <p id="author-hint" className="text-xs text-muted-foreground">
-                  没有从文件名或原稿开头识别出作者，可以手动填写{scrapeConfigured || ai.available ? "，或用上方的刮削、AI 识别" : ""}。
+                  没有从文件名或原稿开头识别出作者，可以手动填写
+                  {(scrapeConfigured || ai.available) &&
+                    `，或用上方的${[scrapeConfigured && "刮削", ai.available && "AI 识别"].filter(Boolean).join("、")}`}
+                  。
                 </p>
               )}
               <SuggestionLine value={suggestion?.author ?? null} current={author} onAdopt={() => suggestion?.author && setAuthor(suggestion.author)} />
