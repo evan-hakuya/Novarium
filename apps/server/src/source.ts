@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { desc, eq, or, sql } from "drizzle-orm";
+import { formatWordCount } from "@novarium/core/word-count";
 import type { AppDeps } from "./app";
 import { readChapter } from "./books";
 import { bookTags, books, chapters, versions } from "./db/schema";
@@ -97,13 +98,13 @@ export function buildBookSource({
   };
 }
 
-// 阅读客户端用的只读 API。挂在 /api/source 下，受访问令牌保护。
-/** 书源的字数，例如「446.8万字」；没有字数时为空字符串。 */
-export function formatWordCount(count: number | null): string {
-  if (count === null || count <= 0) return "";
-  return count >= 10_000 ? `${Number((count / 10_000).toFixed(1))}万字` : `${count}字`;
+/** Legado 的分类字段：多个值用英文逗号分隔。值里的英文逗号换成中文逗号，避免被拆开；重复的值只保留一次。 */
+export function sourceKind(values: (string | null)[]): string {
+  const kinds = values.filter((v): v is string => !!v).map((v) => v.replaceAll(",", "，"));
+  return [...new Set(kinds)].join(",");
 }
 
+// 阅读客户端用的只读 API。挂在 /api/source 下，受访问令牌保护。
 export function createSourceRoutes() {
   const app = new Hono<Env>();
 
@@ -150,9 +151,9 @@ export function createSourceRoutes() {
     // 刮削过的书附上资料来源（DaoSearch 条款要求），所有者改过简介后依然附带。
     intro: (row.intro || `共 ${row.chapterCount} 章`) + (row.scrapeUrl ? `\n\n资料来源：DaoSearch ${row.scrapeUrl}` : ""),
     // Legado 的分类字段，多个值用逗号分隔：分类、子分类、标签。
-    kind: [row.genre, row.subgenre, ...(JSON.parse(row.tags) as string[])].filter(Boolean).join(","),
+    kind: sourceKind([row.genre, row.subgenre, ...(JSON.parse(row.tags) as string[])]),
     // 源站字数，例如「446.8万字」。没有刮削过时为空。
-    wordCount: formatWordCount(row.sourceWordCount),
+    wordCount: formatWordCount(row.sourceWordCount, { compact: true }) ?? "",
     lastChapter: row.lastChapter ?? "",
     // 地址含封面的上传 ID：换封面后地址随之改变，阅读客户端不会用缓存的旧图。
     coverUrl: row.coverKey ? `${COVER_BASE}/${row.id}/${row.coverKey.split("/").pop()}` : "",

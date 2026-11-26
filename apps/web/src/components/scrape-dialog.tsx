@@ -165,9 +165,15 @@ function ScrapeDetail({ candidate, onBack, ...props }: FlowProps & { candidate: 
   );
 }
 
+/** 只读字段：所有者不能编辑，再次刮削时按刮削结果整体替换。 */
+const READ_ONLY_FIELDS = new Set<ScrapeField>(["authorEn", "wordCount", "released", "sourceUpdatedAt", "facets", "mature", "sourceUrl", "alsoOn"]);
+
+const matureText = (mature: boolean | null) => (mature === null ? null : mature ? "是" : "否");
+
 function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps & { scraped: ScrapedBook; onBack: () => void }) {
   const newAliases = scraped.aliases.filter((a) => !target.aliases.includes(a));
-  const available: Record<ScrapeField, boolean> = {
+  // 刮削结果里有值的项。
+  const scrapedHas: Record<ScrapeField, boolean> = {
     title: !!scraped.title?.trim(),
     author: !!scraped.author?.trim(),
     intro: !!scraped.intro?.trim(),
@@ -180,7 +186,7 @@ function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps &
     authorEn: !!scraped.authorEn?.trim(),
     wordCount: scraped.wordCount !== null,
     released: !!scraped.released,
-    updatedAt: !!scraped.updatedAt,
+    sourceUpdatedAt: !!scraped.sourceUpdatedAt,
     facets: scraped.facets.length > 0,
     mature: scraped.mature !== null,
     sourceUrl: !!scraped.sourceUrl,
@@ -199,15 +205,19 @@ function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps &
     authorEn: !target.authorEn,
     wordCount: target.sourceWordCount === null,
     released: !target.released,
-    updatedAt: !target.sourceUpdatedAt,
+    sourceUpdatedAt: !target.sourceUpdatedAt,
     facets: !target.facets?.length,
     mature: target.mature === null,
     sourceUrl: !target.sourceUrl,
     alsoOn: !target.alsoOn?.length,
   };
-  // 现有值为空的项默认勾选。
+  // 只读字段勾选后按刮削结果替换：刮削结果为空而现有值不为空时，也可以勾选，用来清空源站已删除的值。
+  const available = Object.fromEntries(
+    (Object.keys(scrapedHas) as ScrapeField[]).map((f) => [f, scrapedHas[f] || (READ_ONLY_FIELDS.has(f) && !empty[f])]),
+  ) as Record<ScrapeField, boolean>;
+  // 刮削结果有值、现有值为空的项默认勾选。
   const [chosen, setChosen] = useState<Set<ScrapeField>>(
-    () => new Set((Object.keys(available) as ScrapeField[]).filter((f) => available[f] && empty[f])),
+    () => new Set((Object.keys(scrapedHas) as ScrapeField[]).filter((f) => scrapedHas[f] && empty[f])),
   );
   const apply = useMutation({
     mutationFn: () => onApply(scraped, [...chosen]),
@@ -261,14 +271,14 @@ function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps &
     { field: "authorEn", label: "作者英文名", current: target.authorEn, next: scraped.authorEn },
     { field: "wordCount", label: "源站字数", current: formatWordCount(target.sourceWordCount), next: formatWordCount(scraped.wordCount) },
     { field: "released", label: "首发日期", current: formatReleased(target.released), next: formatReleased(scraped.released) },
-    { field: "updatedAt", label: "源站更新", current: formatDate(target.sourceUpdatedAt), next: formatDate(scraped.updatedAt) },
+    { field: "sourceUpdatedAt", label: "源站更新", current: formatDate(target.sourceUpdatedAt), next: formatDate(scraped.sourceUpdatedAt) },
     {
       field: "facets",
       label: "平台标记",
       current: target.facets?.map(formatFacet).join("、"),
       next: scraped.facets.map(formatFacet).join("、"),
     },
-    { field: "mature", label: "成人向", current: target.mature ? "是" : "否", next: scraped.mature ? "是" : "否" },
+    { field: "mature", label: "成人向", current: matureText(target.mature), next: matureText(scraped.mature) },
     {
       field: "sourceUrl",
       label: "源站链接",
@@ -309,7 +319,9 @@ function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps &
               {row.label}
             </label>
             <div className="min-w-0 break-words text-muted-foreground">{empty[row.field] ? "（空）" : row.current}</div>
-            <div className="min-w-0 break-words">{available[row.field] ? row.next : <span className="text-muted-foreground">（无）</span>}</div>
+            <div className="min-w-0 break-words">
+              {scrapedHas[row.field] ? row.next : <span className="text-muted-foreground">{available[row.field] ? "（清空）" : "（无）"}</span>}
+            </div>
           </div>
         ))}
       </div>

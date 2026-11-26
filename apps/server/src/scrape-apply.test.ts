@@ -57,6 +57,22 @@ describe("刮削接口", () => {
     requests.push({ url, authorization: new Headers(init?.headers).get("authorization") });
     if (url.includes("/search?")) return Response.json({ data: [daoBook("1", "别人"), daoBook("2", "无名氏")] });
     if (url.includes("/books/qidian/2")) return Response.json({ data: daoBook("2", "无名氏") });
+    // 源站资料被删掉的作品：只读字段都为空；别名里有书名。
+    if (url.includes("/books/qidian/3")) {
+      return Response.json({
+        data: {
+          ...daoBook("3", "无名氏"),
+          other_names: [{ name: "书2", name_translated: null }, { name: "别名3", name_translated: null }],
+          word_count: null,
+          released: null,
+          updated_at: null,
+          facets: [],
+          mature: null,
+          source_url: null,
+          also_on: [],
+        },
+      });
+    }
     if (url.startsWith("https://img.example/")) return coverResponse();
     return Response.json({ error: { code: "not_found", status: 404 } }, { status: 404 });
   }) as typeof fetch;
@@ -147,9 +163,9 @@ describe("刮削接口", () => {
       expect(book).toMatchObject({ genre: null, sourceWordCount: null, aliases: [], mature: null });
     });
 
-    it("写入描述字段：别名合并进现有别名，只读字段整体替换", async () => {
+    it("写入描述字段：别名合并进现有别名，只读字段取刮削结果", async () => {
       await call("PATCH", `/api/admin/books/${BOOK_ID}`, { aliases: ["自己加的别名"] });
-      const fields = ["genre", "subgenre", "status", "aliases", "authorEn", "wordCount", "released", "updatedAt", "facets", "mature", "sourceUrl", "alsoOn"];
+      const fields = ["genre", "subgenre", "status", "aliases", "authorEn", "wordCount", "released", "sourceUpdatedAt", "facets", "mature", "sourceUrl", "alsoOn"];
       expect((await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/2", fields })).status).toBe(200);
       expect(await detail()).toMatchObject({
         genre: "玄幻",
@@ -164,6 +180,24 @@ describe("刮削接口", () => {
         mature: true,
         sourceUrl: "https://www.qidian.com/book/2/",
         alsoOn: [{ platform: "zongheng", url: "https://daosearch.io/zongheng/book/9/x" }],
+      });
+    });
+
+    it("再次刮削时，刮削结果为空的只读字段被清空；别名不含现在与新写入的书名", async () => {
+      const fields = ["title", "aliases", "wordCount", "released", "sourceUpdatedAt", "facets", "mature", "sourceUrl", "alsoOn"];
+      await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/2", fields });
+      expect(await detail()).toMatchObject({ sourceWordCount: 1000, mature: true });
+      expect((await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/3", fields })).status).toBe(200);
+      expect(await detail()).toMatchObject({
+        title: "书3",
+        aliases: ["旧名", "自己加的别名", "别名3"],
+        sourceWordCount: null,
+        released: null,
+        sourceUpdatedAt: null,
+        facets: null,
+        mature: null,
+        sourceUrl: null,
+        alsoOn: null,
       });
     });
 

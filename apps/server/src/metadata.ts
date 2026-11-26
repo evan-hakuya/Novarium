@@ -45,6 +45,7 @@ export async function getTags(db: AppDeps["db"], bookId: string): Promise<string
 export function parseAliases(value: unknown): string[] | null {
   if (!Array.isArray(value) || !value.every((t) => typeof t === "string")) return null;
   const aliases = [...new Set((value as string[]).map((t) => t.trim()).filter(Boolean))];
+  // 别名与书名一样按 UTF-16 单位计数（刮削写入时的 clip 也是）；标签按码点计数。
   if (aliases.length > MAX_ALIASES || aliases.some((t) => t.length > MAX_ALIAS_LENGTH)) return null;
   return aliases;
 }

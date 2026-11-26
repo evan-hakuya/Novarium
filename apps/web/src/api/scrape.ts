@@ -1,4 +1,4 @@
-import { ApiError, describeError, request } from "./books";
+import { ApiError, describeError, request, type Released } from "./books";
 
 /** 刮削的状态（ADR 0006）。configured：已填写 DaoSearch 密钥；keyHint：密钥的前后几位。 */
 export interface ScrapeStatus {
@@ -46,12 +46,12 @@ export interface ScrapedBook extends ScrapeCandidate {
   tags: string[];
   wordCount: number | null;
   status: "ongoing" | "completed" | null;
-  released: { date: string; precision: string; estimated: boolean } | null;
+  released: Released | null;
   genre: string | null;
   subgenre: string | null;
   aliases: string[];
   authorEn: string | null;
-  updatedAt: string | null;
+  sourceUpdatedAt: string | null;
   facets: { key: string; label: string; value: string }[];
   mature: boolean | null;
   sourceUrl: string | null;
@@ -71,7 +71,7 @@ export type ScrapeField =
   | "authorEn"
   | "wordCount"
   | "released"
-  | "updatedAt"
+  | "sourceUpdatedAt"
   | "facets"
   | "mature"
   | "sourceUrl"
@@ -111,16 +111,12 @@ const platformNames: Record<string, string> = {
 
 export const platformName = (platform: string) => platformNames[platform] ?? platform;
 
-/** 字数，例如「446.5 万字」。 */
-export function formatWordCount(count: number | null): string | null {
-  if (count === null) return null;
-  return count >= 10_000 ? `${Number((count / 10_000).toFixed(1))} 万字` : `${count} 字`;
-}
+export { formatWordCount } from "@novarium/core";
 
 export const statusText = { ongoing: "连载", completed: "完结" } as const;
 
 /** 首发日期，例如「2017（估算）」。 */
-export function formatReleased(released: { date: string; estimated: boolean } | null): string | null {
+export function formatReleased(released: Released | null): string | null {
   if (!released) return null;
   return released.estimated ? `${released.date}（估算）` : released.date;
 }

@@ -69,7 +69,7 @@ const scraped = {
   subgenre: "异世大陆",
   aliases: ["LOTM", "旧书名", "Lord of the Mysteries"],
   authorEn: null,
-  updatedAt: "2025-08-14T01:00:00Z",
+  sourceUpdatedAt: "2025-08-14T01:00:00Z",
   facets: [{ key: "signed", label: "Signed", value: "Signed" }],
   mature: false,
   sourceUrl: "https://www.qidian.com/book/1010868264/",

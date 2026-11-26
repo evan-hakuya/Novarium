@@ -161,7 +161,7 @@ const FIELDS = [
   "authorEn",
   "wordCount",
   "released",
-  "updatedAt",
+  "sourceUpdatedAt",
   "facets",
   "mature",
   "sourceUrl",
@@ -243,7 +243,11 @@ export function createScrapeRoutes() {
       return c.json({ error: "invalid_body" }, 400);
     }
     const chosen = new Set(fields as Field[]);
-    const current = await db.select({ coverKey: books.coverKey, aliases: books.aliases }).from(books).where(eq(books.id, bookId)).get();
+    const current = await db
+      .select({ title: books.title, coverKey: books.coverKey, aliases: books.aliases })
+      .from(books)
+      .where(eq(books.id, bookId))
+      .get();
     if (!current) return c.json({ error: "not_found" }, 404);
     const source = await getScrapeSource(deps);
     if (!source) return c.json({ error: "scrape_not_configured" }, 409);
@@ -270,16 +274,23 @@ export function createScrapeRoutes() {
     if (chosen.has("genre") && scraped.genre?.trim()) set.genre = clip(scraped.genre.trim(), MAX_GENRE_LENGTH);
     if (chosen.has("subgenre") && scraped.subgenre?.trim()) set.subgenre = clip(scraped.subgenre.trim(), MAX_GENRE_LENGTH);
     if (chosen.has("status") && scraped.status) set.serialStatus = scraped.status;
-    if (chosen.has("aliases") && scraped.aliases.length > 0) set.aliases = mergeAliases(current.aliases, scraped.aliases);
-    if (chosen.has("authorEn") && scraped.authorEn?.trim()) set.authorEn = clip(scraped.authorEn.trim(), MAX_AUTHOR_LENGTH);
-    if (chosen.has("wordCount") && scraped.wordCount !== null) set.sourceWordCount = scraped.wordCount;
-    if (chosen.has("released") && scraped.released) set.released = scraped.released;
-    const updatedAt = scraped.updatedAt ? new Date(scraped.updatedAt) : null;
-    if (chosen.has("updatedAt") && updatedAt && !Number.isNaN(updatedAt.getTime())) set.sourceUpdatedAt = updatedAt;
-    if (chosen.has("facets") && scraped.facets.length > 0) set.facets = scraped.facets.slice(0, MAX_LIST_ITEMS);
-    if (chosen.has("mature") && scraped.mature !== null) set.mature = scraped.mature;
-    if (chosen.has("sourceUrl") && scraped.sourceUrl) set.sourceUrl = scraped.sourceUrl;
-    if (chosen.has("alsoOn") && scraped.alsoOn.length > 0) set.alsoOn = scraped.alsoOn.slice(0, MAX_LIST_ITEMS);
+    if (chosen.has("aliases") && scraped.aliases.length > 0) {
+      // 别名不含书名：既排除现在的书名，也排除这次写入的书名。
+      const titles = new Set([current.title, set.title]);
+      set.aliases = mergeAliases(current.aliases, scraped.aliases.filter((alias) => !titles.has(alias.trim())));
+    }
+    // 以下是只读字段：所有者不能编辑，勾选后按刮削结果整体替换；刮削结果为空时清空，避免留下源站已删除的旧值。
+    if (chosen.has("authorEn")) set.authorEn = scraped.authorEn?.trim() ? clip(scraped.authorEn.trim(), MAX_AUTHOR_LENGTH) : null;
+    if (chosen.has("wordCount")) set.sourceWordCount = scraped.wordCount;
+    if (chosen.has("released")) set.released = scraped.released;
+    if (chosen.has("sourceUpdatedAt")) {
+      const updatedAt = scraped.sourceUpdatedAt ? new Date(scraped.sourceUpdatedAt) : null;
+      set.sourceUpdatedAt = updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : null;
+    }
+    if (chosen.has("facets")) set.facets = scraped.facets.length > 0 ? scraped.facets.slice(0, MAX_LIST_ITEMS) : null;
+    if (chosen.has("mature")) set.mature = scraped.mature;
+    if (chosen.has("sourceUrl")) set.sourceUrl = scraped.sourceUrl;
+    if (chosen.has("alsoOn")) set.alsoOn = scraped.alsoOn.length > 0 ? scraped.alsoOn.slice(0, MAX_LIST_ITEMS) : null;
 
     const queries: BatchQuery[] = [];
     let stale: string[] = [];

@@ -130,7 +130,7 @@ export function BookMetadataPanel({ book }: { book: Book }) {
               <Label htmlFor="meta-tags">标签</Label>
               <ChipInput id="meta-tags" values={draft.tags} maxLength={20} removeLabel="移除标签" onChange={(tags) => setDraft({ ...draft, tags })} />
               <span className="text-xs text-muted-foreground">
-                最多 20 个，每个不超过 20 字。阅读客户端把分类、子分类与标签一起显示为分类，发现页按标签列出书；新增标签后重新导入书源才会出现新的入口。
+                最多 20 个，每个不超过 20 字。阅读客户端的「分类」一栏依次显示分类、子分类与标签；发现页按标签列出书，新增标签后重新导入书源才会出现新的入口。
               </span>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">

@@ -62,7 +62,7 @@ const lateFieldText: Partial<Record<ScrapeField, string>> = {
   authorEn: "作者英文名",
   wordCount: "源站字数",
   released: "首发日期",
-  updatedAt: "源站更新",
+  sourceUpdatedAt: "源站更新",
   facets: "平台标记",
   mature: "成人向",
   sourceUrl: "源站链接",

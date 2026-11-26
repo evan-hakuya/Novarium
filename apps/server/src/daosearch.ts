@@ -1,6 +1,7 @@
 // DaoSearch 刮削源（ADR 0006，`docs/agents/daosearch.md`）。只从服务端调用。
 import {
   ScrapeError,
+  type Released,
   type ScrapeCache,
   type ScrapeCandidate,
   type ScrapedBook,
@@ -40,7 +41,7 @@ interface DaoSearchBook extends DaoSearchResult {
   tags: Text[] | null;
   word_count: number | null;
   status: string | null;
-  released: { date: string; precision: string; estimated: boolean } | null;
+  released: Released | null;
   genre?: Text | null;
   subgenre?: Text | null;
   other_names?: { name: string | null; name_translated: string | null }[] | null;
@@ -103,7 +104,7 @@ function toBook(book: DaoSearchBook): ScrapedBook {
     subgenre: zh(book.subgenre),
     aliases,
     authorEn: book.author?.en ?? null,
-    updatedAt: book.updated_at ?? null,
+    sourceUpdatedAt: book.updated_at ?? null,
     facets: (book.facets ?? []).filter((f) => f.label && f.value_label).map((f) => ({ key: f.key, label: f.label, value: f.value_label })),
     mature: typeof book.mature === "boolean" ? book.mature : null,
     sourceUrl: https(book.source_url),

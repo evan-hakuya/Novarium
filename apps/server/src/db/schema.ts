@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer, primaryKey, index } from "drizzle-orm/sqlite-core";
+import type { Released } from "../scrape";
 
 // 访问令牌。鉴权按 tokenHash 查找；token 存明文，供所有者再次查看书源（迁移 0004 之前创建的令牌为空）。
 // 撤销后保留记录，revokedAt 非空；所有者可以删除记录。
@@ -48,8 +49,8 @@ export const books = sqliteTable("books", {
   authorEn: text("author_en"),
   /** 源站字数（汉字）。 */
   sourceWordCount: integer("source_word_count"),
-  /** 首发日期：date 为 YYYY-MM-DD、YYYY-MM 或 YYYY；precision 为 day、month 或 year；estimated 表示是估算。 */
-  released: text("released", { mode: "json" }).$type<{ date: string; precision: string; estimated: boolean }>(),
+  /** 首发日期，见 Released。 */
+  released: text("released", { mode: "json" }).$type<Released>(),
   /** 源站最后更新章节的时间。 */
   sourceUpdatedAt: integer("source_updated_at", { mode: "timestamp_ms" }),
   /** 平台标记，例如 { key: "signed", label: "Signed", value: "Signed" }。 */
