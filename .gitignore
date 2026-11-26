@@ -9,3 +9,5 @@ data/
 test-results/
 playwright-report/
 .DS_Store
+.impeccable/config.local.json
+.impeccable/hook.cache.json
