@@ -2,7 +2,7 @@
 
 Every change reaches `main` through a squash-merged PR. GitHub signs the squash commit, so `main` shows only **Verified** commits. This machine has no gpg: a local commit pushed straight to `main` is Unverified.
 
-GitHub enforces this. A ruleset on `main` requires a PR, the `check` and `title` jobs to pass, and signed commits. It also blocks force pushes and branch deletion. The repo allows squash merges only and deletes the branch after merge. `.github/workflows/pr-title.yml` checks that the PR title is a Conventional Commit.
+GitHub enforces this. A ruleset on `main` requires a PR and requires the `check` and `title` jobs to pass. It also blocks force pushes and branch deletion. The repo allows squash merges only, uses the PR title as the commit subject, and deletes the branch after merge. `.github/workflows/pr-title.yml` checks that the PR title is a Conventional Commit. The ruleset does not use "require signed commits": that rule also checks the unsigned commits on the PR branch and blocks the squash merge. PR-only, squash-only merging already makes every commit on `main` GitHub-signed.
 
 ## Steps
 
