@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ProcessOptions } from "@novarium/core";
+import { manuscriptHead, type ProcessOptions } from "@novarium/core";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   booksQueryKey,
@@ -110,16 +110,17 @@ export function ImportPage() {
       setError(`文件大小为 ${formatBytes(file.size)}，超过 100 MB 上限。`);
       return;
     }
-    const guess = guessBookName(file.name);
-    setTitle(guess.title);
-    setAuthor(guess.author);
-    setIntro("");
     try {
+      const bytes = await file.arrayBuffer();
+      const guess = guessBookName(file.name, await manuscriptHead(new Uint8Array(bytes), 1000));
+      setTitle(guess.title);
+      setAuthor(guess.author);
+      setIntro("");
       const defaults = await queryClient.fetchQuery({
         queryKey: processOptionsQueryKey,
         queryFn: fetchDefaultProcessOptions,
       });
-      const src = { file, bytes: await file.arrayBuffer() };
+      const src = { file, bytes };
       setSource(src);
       await run(src.bytes, { ...defaults, chapterPattern: null });
     } catch (e) {
@@ -290,8 +291,87 @@ export function ImportPage() {
         )}
       </Step>
 
+      {source && (
+        <Step n={2} title="书目信息">
+          {(ai.available || scrapeConfigured) && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              {scrapeConfigured && (
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => setScraping(true)}>
+                  刮削
+                </Button>
+              )}
+              {ai.available && (
+                <Button size="sm" variant="outline" disabled={busy || ai.pending} onClick={ai.run}>
+                  {ai.pending ? "AI 识别中…" : "AI 识别元数据"}
+                </Button>
+              )}
+              {hasNewSuggestion && (
+                <Button size="sm" variant="ghost" disabled={uploading} onClick={adoptAll}>
+                  全部采用
+                </Button>
+              )}
+              {ai.empty && <span className="text-muted-foreground">AI 没有在原稿开头找到书名、作者或简介。</span>}
+              {ai.error && <span className="text-destructive">{ai.error}</span>}
+            </div>
+          )}
+          {scrapePick && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+              <span>
+                刮削来源：
+                <a className="underline" href={scrapePick.scraped.url} target="_blank" rel="noreferrer">
+                  《{scrapePick.scraped.title ?? "（无书名）"}》{platformName(scrapePick.scraped.platform)} · DaoSearch
+                </a>
+                {scrapePick.fields.length > 0 && `。导入后写入${scrapePick.fields.map((f) => lateFieldText[f]).join("、")}`}
+              </span>
+              <Button size="sm" variant="ghost" disabled={uploading} onClick={cancelScrape}>
+                取消刮削
+              </Button>
+            </div>
+          )}
+          {scrapeConfigured && (
+            <ScrapeDialog
+              target={{ title, author, intro, tags: [], coverUrl: null, ...emptyDescription }}
+              onApply={onScrapeApply}
+              open={scraping}
+              onOpenChange={setScraping}
+            />
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="title">书名</Label>
+              <Input id="title" value={title} disabled={uploading} onChange={(e) => setTitle(e.target.value)} />
+              <SuggestionLine value={suggestion?.title ?? null} current={title} onAdopt={() => suggestion?.title && setTitle(suggestion.title)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="author">作者</Label>
+              <Input
+                id="author"
+                value={author}
+                disabled={uploading}
+                aria-describedby={author.trim() ? undefined : "author-hint"}
+                onChange={(e) => setAuthor(e.target.value)}
+              />
+              {!author.trim() && (
+                <p id="author-hint" className="text-xs text-muted-foreground">
+                  没有从文件名或原稿开头识别出作者，可以手动填写
+                  {(scrapeConfigured || ai.available) &&
+                    `，或用上方的${[scrapeConfigured && "刮削", ai.available && "AI 识别"].filter(Boolean).join("、")}`}
+                  。
+                </p>
+              )}
+              <SuggestionLine value={suggestion?.author ?? null} current={author} onAdopt={() => suggestion?.author && setAuthor(suggestion.author)} />
+            </div>
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <Label htmlFor="intro">简介</Label>
+              <Textarea id="intro" rows={3} value={intro} disabled={uploading} onChange={(e) => setIntro(e.target.value)} />
+              <SuggestionLine value={suggestion?.intro ?? null} current={intro} onAdopt={() => suggestion?.intro && setIntro(suggestion.intro)} />
+            </div>
+          </div>
+        </Step>
+      )}
+
       {options && source && (
-        <Step n={2} title="检查章节">
+        <Step n={3} title="检查章节">
           <OptionsPanel
             key={source.file.name + source.file.lastModified}
             options={options}
@@ -315,69 +395,6 @@ export function ImportPage() {
 
       {version && (
         <>
-          <Step n={3} title="书目信息">
-            {(ai.available || scrapeConfigured) && (
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                {scrapeConfigured && (
-                  <Button size="sm" variant="outline" disabled={busy} onClick={() => setScraping(true)}>
-                    刮削
-                  </Button>
-                )}
-                {ai.available && (
-                  <Button size="sm" variant="outline" disabled={busy || ai.pending} onClick={ai.run}>
-                    {ai.pending ? "AI 识别中…" : "AI 识别元数据"}
-                  </Button>
-                )}
-                {hasNewSuggestion && (
-                  <Button size="sm" variant="ghost" disabled={uploading} onClick={adoptAll}>
-                    全部采用
-                  </Button>
-                )}
-                {ai.empty && <span className="text-muted-foreground">AI 没有在原稿开头找到书名、作者或简介。</span>}
-                {ai.error && <span className="text-destructive">{ai.error}</span>}
-              </div>
-            )}
-            {scrapePick && (
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-                <span>
-                  刮削来源：
-                  <a className="underline" href={scrapePick.scraped.url} target="_blank" rel="noreferrer">
-                    《{scrapePick.scraped.title ?? "（无书名）"}》{platformName(scrapePick.scraped.platform)} · DaoSearch
-                  </a>
-                  {scrapePick.fields.length > 0 && `。导入后写入${scrapePick.fields.map((f) => lateFieldText[f]).join("、")}`}
-                </span>
-                <Button size="sm" variant="ghost" disabled={uploading} onClick={cancelScrape}>
-                  取消刮削
-                </Button>
-              </div>
-            )}
-            {scrapeConfigured && (
-              <ScrapeDialog
-                target={{ title, author, intro, tags: [], coverUrl: null, ...emptyDescription }}
-                onApply={onScrapeApply}
-                open={scraping}
-                onOpenChange={setScraping}
-              />
-            )}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="title">书名</Label>
-                <Input id="title" value={title} disabled={uploading} onChange={(e) => setTitle(e.target.value)} />
-                <SuggestionLine value={suggestion?.title ?? null} current={title} onAdopt={() => suggestion?.title && setTitle(suggestion.title)} />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="author">作者</Label>
-                <Input id="author" value={author} disabled={uploading} onChange={(e) => setAuthor(e.target.value)} />
-                <SuggestionLine value={suggestion?.author ?? null} current={author} onAdopt={() => suggestion?.author && setAuthor(suggestion.author)} />
-              </div>
-              <div className="flex flex-col gap-2 sm:col-span-2">
-                <Label htmlFor="intro">简介</Label>
-                <Textarea id="intro" rows={3} value={intro} disabled={uploading} onChange={(e) => setIntro(e.target.value)} />
-                <SuggestionLine value={suggestion?.intro ?? null} current={intro} onAdopt={() => suggestion?.intro && setIntro(suggestion.intro)} />
-              </div>
-            </div>
-          </Step>
-
           <Step n={4} title="确认导入">
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <p id="import-status" className="text-muted-foreground">

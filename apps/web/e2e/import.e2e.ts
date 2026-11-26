@@ -95,7 +95,15 @@ test("imports a large manuscript", async ({ page }) => {
 
   await test.step("the page follows the import steps", async () => {
     const steps = page.getByRole("heading", { level: 3 }).filter({ hasText: /^\d/ });
-    await expect(steps).toHaveText(["1原稿", "2检查章节", "3书目信息", "4确认导入"]);
+    await expect(steps).toHaveText(["1原稿", "2书目信息", "3检查章节", "4确认导入"]);
+  });
+
+  await test.step("an empty author explains how to fill it", async () => {
+    await page.locator("#author").fill("");
+    await expect(page.locator("#author-hint")).toBeVisible();
+    await expect(page.locator("#author")).toHaveAttribute("aria-describedby", "author-hint");
+    // 没有刮削源密钥也没有 AI 时，不提到这两个入口。
+    await expect(page.locator("#author-hint")).not.toContainText("刮削");
   });
 
   await page.locator("#title").fill("");
