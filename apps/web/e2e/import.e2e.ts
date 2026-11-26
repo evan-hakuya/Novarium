@@ -29,6 +29,7 @@ test("imports a large manuscript", async ({ page }) => {
 
   await test.step("book chapter pattern stays within budget", async () => {
     await page.getByText("整理选项").click();
+    await page.getByText("章节正则（高级）").click();
     await page.locator("#chapter-pattern").fill("^个人番外");
     const started = Date.now();
     await page.getByRole("button", { name: "应用" }).click();
@@ -68,6 +69,28 @@ test("imports a large manuscript", async ({ page }) => {
     await expect(page.getByRole("tab", { name: "缺号 1" })).toBeVisible();
     await expect(page.getByRole("tab", { name: /^乱序/ })).toHaveCount(0);
     await expect(page.getByText("1 处缺号或重复编号待检查，不影响继续")).toBeVisible();
+    await expect(page.getByText("选中一种类型，查看它的处理方式。")).toBeVisible();
+    await page.getByRole("tab", { name: "缺号 1" }).click();
+    await expect(page.getByText("无法自动修复，也不挡住导入", { exact: false })).toBeVisible();
+  });
+
+  await test.step("a chapter link in the anomaly panel reveals and focuses that chapter", async () => {
+    const panel = page.locator("section").filter({ hasText: "章节异常" });
+    const heading = page.locator("article[data-chapter-scroll] h2");
+    const size = page.viewportSize()!;
+    for (const width of [size.width, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : size.height });
+      for (let i = 0; i < 2; i++) {
+        // 第二次跳到已选中的章节，且先把正文读到中间，也要回到标题。
+        await page.locator("article[data-chapter-scroll]").evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await panel.getByRole("button", { name: `第${MISSING - 1}章 测试`, exact: true }).click();
+        await expect(heading).toHaveText(`第${MISSING - 1}章 测试`);
+        await expect(heading).toBeFocused();
+        await expect(heading).toBeInViewport();
+      }
+    }
+    await page.setViewportSize(size);
   });
 
   await test.step("the page follows the import steps", async () => {

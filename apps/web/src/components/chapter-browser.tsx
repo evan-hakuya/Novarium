@@ -19,6 +19,7 @@ const scrollsItself = (el: Element) => getComputedStyle(el).overflowY === "auto"
  * 窄屏正文由页面滚动；列表限高，几百章时不把后面的内容推出页面。
  * 章节有所属卷时，列表在每卷第一章前显示不可点击的卷名。
  * 传入 selected 与 onSelect 时由调用方控制当前章节；flagged 中的章节在列表中标出。
+ * revealKey 每变一次（例如从异常面板跳转），就把正文滚入视口并把焦点移到章节标题。
  */
 export function ChapterBrowser({
   chapters,
@@ -26,12 +27,14 @@ export function ChapterBrowser({
   selected: controlled,
   onSelect,
   flagged,
+  revealKey,
 }: {
   chapters: ChapterItem[];
   renderContent: (chapter: ChapterItem) => ReactNode;
   selected?: number;
   onSelect?: (order: number) => void;
   flagged?: ReadonlySet<number>;
+  revealKey?: number;
 }) {
   const [own, setOwn] = useState(0);
   const selected = controlled ?? own;
@@ -39,6 +42,8 @@ export function ChapterBrowser({
   const current = chapters[selected];
   const listRef = useRef<HTMLOListElement>(null);
   const articleRef = useRef<HTMLElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   // 窄屏当前显示正文还是列表；宽屏两栏都显示，不受它影响。
   const [reading, setReading] = useState(false);
   const shown = useRef({ selected, reading });
@@ -61,8 +66,30 @@ export function ChapterBrowser({
     else listRef.current?.querySelector(`[data-order="${selected}"]`)?.scrollIntoView({ block: "center" });
   }, [reading, selected]);
 
+  // 外部跳转：窄屏先切到正文，正文显示后再滚动并聚焦，跳到当前章时也有反馈。
+  const reveal = useRef({ seen: revealKey, pending: false });
+  useEffect(() => {
+    if (revealKey !== reveal.current.seen) {
+      reveal.current = { seen: revealKey, pending: true };
+      setReading(true);
+    }
+    if (!reveal.current.pending || !reading) return;
+    reveal.current.pending = false;
+    const article = articleRef.current;
+    if (!article) return;
+    // 宽屏正文自己滚动：跳到已选中的章节时 selected 不变，要在这里把正文滚回开头。
+    if (scrollsItself(article)) {
+      article.scrollTo({ top: 0 });
+      rootRef.current?.scrollIntoView({ block: "start" });
+    } else article.scrollIntoView({ block: "start" });
+    headingRef.current?.focus({ preventScroll: true });
+  }, [revealKey, reading]);
+
   return (
-    <div className="rounded-xl border md:grid md:h-[70svh] md:grid-cols-[minmax(10rem,16rem)_1fr] md:overflow-hidden">
+    <div
+      ref={rootRef}
+      className="scroll-mt-4 rounded-xl border md:grid md:h-[70svh] md:grid-cols-[minmax(10rem,16rem)_1fr] md:overflow-hidden"
+    >
       <ol ref={listRef} className={cn("max-h-[60svh] overflow-y-auto py-2 text-sm md:max-h-none md:border-r", reading && "max-md:hidden")}>
         {chapters.map((c, i) => (
           <li key={c.order}>
@@ -107,7 +134,9 @@ export function ChapterBrowser({
         </Button>
         {current && (
           <>
-            <h2 className="mb-4 font-heading text-lg font-semibold">{current.title}</h2>
+            <h2 ref={headingRef} tabIndex={-1} className="mb-4 font-heading text-lg font-semibold outline-none">
+              {current.title}
+            </h2>
             {renderContent(current)}
           </>
         )}
