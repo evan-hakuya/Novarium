@@ -1,7 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import type { BookDescription } from "@/api/books";
 import {
   fetchScrapedBook,
+  formatDate,
+  formatFacet,
+  formatReleased,
   formatWordCount,
   platformName,
   SCRAPE_STALE_MS,
@@ -20,8 +24,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-/** 对比页「现有」一列的值：书详情页取这本书，导入页取导入表单。 */
-export interface ScrapeTarget {
+/** 对比页「现有」一列的值：书详情页取这本书，导入页取导入表单（描述字段为空）。 */
+export interface ScrapeTarget extends BookDescription {
   title: string;
   author: string;
   intro: string;
@@ -161,13 +165,32 @@ function ScrapeDetail({ candidate, onBack, ...props }: FlowProps & { candidate: 
   );
 }
 
+/** 只读字段：所有者不能编辑，再次刮削时按刮削结果整体替换。 */
+const READ_ONLY_FIELDS = new Set<ScrapeField>(["authorEn", "wordCount", "released", "sourceUpdatedAt", "facets", "mature", "sourceUrl", "alsoOn"]);
+
+const matureText = (mature: boolean | null) => (mature === null ? null : mature ? "是" : "否");
+
 function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps & { scraped: ScrapedBook; onBack: () => void }) {
-  const available: Record<ScrapeField, boolean> = {
+  const newAliases = scraped.aliases.filter((a) => !target.aliases.includes(a));
+  // 刮削结果里有值的项。
+  const scrapedHas: Record<ScrapeField, boolean> = {
     title: !!scraped.title?.trim(),
     author: !!scraped.author?.trim(),
     intro: !!scraped.intro?.trim(),
     tags: scraped.tags.length > 0,
     cover: !!scraped.coverUrl,
+    genre: !!scraped.genre?.trim(),
+    subgenre: !!scraped.subgenre?.trim(),
+    status: !!scraped.status,
+    aliases: scraped.aliases.length > 0,
+    authorEn: !!scraped.authorEn?.trim(),
+    wordCount: scraped.wordCount !== null,
+    released: !!scraped.released,
+    sourceUpdatedAt: !!scraped.sourceUpdatedAt,
+    facets: scraped.facets.length > 0,
+    mature: scraped.mature !== null,
+    sourceUrl: !!scraped.sourceUrl,
+    alsoOn: scraped.alsoOn.length > 0,
   };
   const empty: Record<ScrapeField, boolean> = {
     title: !target.title.trim(),
@@ -175,10 +198,26 @@ function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps &
     intro: !target.intro.trim(),
     tags: target.tags.length === 0,
     cover: !target.coverUrl,
+    genre: !target.genre,
+    subgenre: !target.subgenre,
+    status: !target.serialStatus,
+    aliases: target.aliases.length === 0,
+    authorEn: !target.authorEn,
+    wordCount: target.sourceWordCount === null,
+    released: !target.released,
+    sourceUpdatedAt: !target.sourceUpdatedAt,
+    facets: !target.facets?.length,
+    mature: target.mature === null,
+    sourceUrl: !target.sourceUrl,
+    alsoOn: !target.alsoOn?.length,
   };
-  // 现有值为空的项默认勾选。
+  // 只读字段勾选后按刮削结果替换：刮削结果为空而现有值不为空时，也可以勾选，用来清空源站已删除的值。
+  const available = Object.fromEntries(
+    (Object.keys(scrapedHas) as ScrapeField[]).map((f) => [f, scrapedHas[f] || (READ_ONLY_FIELDS.has(f) && !empty[f])]),
+  ) as Record<ScrapeField, boolean>;
+  // 刮削结果有值、现有值为空的项默认勾选。
   const [chosen, setChosen] = useState<Set<ScrapeField>>(
-    () => new Set((Object.keys(available) as ScrapeField[]).filter((f) => available[f] && empty[f])),
+    () => new Set((Object.keys(scrapedHas) as ScrapeField[]).filter((f) => scrapedHas[f] && empty[f])),
   );
   const apply = useMutation({
     mutationFn: () => onApply(scraped, [...chosen]),
@@ -215,22 +254,55 @@ function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps &
       current: ownCover ? <img src={ownCover} alt="现有封面" className="h-24 w-16 rounded border object-cover" /> : null,
       next: scraped.coverUrl ? <RemoteCover url={scraped.coverUrl} title={scraped.title} className="h-24 w-16" /> : null,
     },
+    { field: "genre", label: "分类", current: target.genre, next: scraped.genre },
+    { field: "subgenre", label: "子分类", current: target.subgenre, next: scraped.subgenre },
+    {
+      field: "status",
+      label: "连载状态",
+      current: target.serialStatus && statusText[target.serialStatus],
+      next: scraped.status && statusText[scraped.status],
+    },
+    {
+      field: "aliases",
+      label: "别名",
+      current: target.aliases.join("、"),
+      next: newAliases.length > 0 ? `合并：${newAliases.join("、")}` : "没有新别名",
+    },
+    { field: "authorEn", label: "作者英文名", current: target.authorEn, next: scraped.authorEn },
+    { field: "wordCount", label: "源站字数", current: formatWordCount(target.sourceWordCount), next: formatWordCount(scraped.wordCount) },
+    { field: "released", label: "首发日期", current: formatReleased(target.released), next: formatReleased(scraped.released) },
+    { field: "sourceUpdatedAt", label: "源站更新", current: formatDate(target.sourceUpdatedAt), next: formatDate(scraped.sourceUpdatedAt) },
+    {
+      field: "facets",
+      label: "平台标记",
+      current: target.facets?.map(formatFacet).join("、"),
+      next: scraped.facets.map(formatFacet).join("、"),
+    },
+    { field: "mature", label: "成人向", current: matureText(target.mature), next: matureText(scraped.mature) },
+    {
+      field: "sourceUrl",
+      label: "源站链接",
+      current: <span className="break-all">{target.sourceUrl}</span>,
+      next: <span className="break-all">{scraped.sourceUrl}</span>,
+    },
+    {
+      field: "alsoOn",
+      label: "其他平台",
+      current: target.alsoOn?.map((e) => platformName(e.platform)).join("、"),
+      next: scraped.alsoOn.map((e) => platformName(e.platform)).join("、"),
+    },
   ];
 
   return (
     <>
       <DialogTitle>对比并写入</DialogTitle>
       <DialogDescription>
-        勾选要写入的项。标签合并进现有标签，不删除已有标签。来源：
+        勾选要写入的项。标签与别名合并进现有的值，不删除已有的。来源：
         <a className="underline" href={scraped.url} target="_blank" rel="noreferrer">
           {platformName(scraped.platform)} · DaoSearch
         </a>
-        {[formatWordCount(scraped.wordCount), scraped.status && statusText[scraped.status], scraped.releasedAt && `首发 ${scraped.releasedAt}`]
-          .filter(Boolean)
-          .map((text) => ` · ${text}`)
-          .join("")}
       </DialogDescription>
-      <div className="grid grid-cols-[auto_3rem_1fr_1fr] items-start gap-x-3 gap-y-3 text-sm">
+      <div className="grid max-h-[60vh] grid-cols-[auto_auto_1fr_1fr] items-start gap-x-3 gap-y-3 overflow-y-auto text-sm">
         <span />
         <span />
         <span className="text-xs text-muted-foreground">现有</span>
@@ -247,7 +319,9 @@ function ScrapeCompare({ target, onApply, onDone, scraped, onBack }: FlowProps &
               {row.label}
             </label>
             <div className="min-w-0 break-words text-muted-foreground">{empty[row.field] ? "（空）" : row.current}</div>
-            <div className="min-w-0 break-words">{available[row.field] ? row.next : <span className="text-muted-foreground">（无）</span>}</div>
+            <div className="min-w-0 break-words">
+              {scrapedHas[row.field] ? row.next : <span className="text-muted-foreground">{available[row.field] ? "（清空）" : "（无）"}</span>}
+            </div>
           </div>
         ))}
       </div>

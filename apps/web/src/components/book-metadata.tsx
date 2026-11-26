@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -14,6 +14,8 @@ import {
   type BookMetadata,
 } from "@/api/books";
 import { applyScrape, fetchScrapeStatus, scrapeStatusQueryKey } from "@/api/scrape";
+import { BookDescriptionView } from "@/components/book-description";
+import { ChipInput } from "@/components/chip-input";
 import { ScrapeDialog } from "@/components/scrape-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,7 +45,6 @@ export function BookMetadataPanel({ book }: { book: Book }) {
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<BookMetadata>(() => pick(book));
-  const [tagInput, setTagInput] = useState("");
   const [scraping, setScraping] = useState(false);
   // 没有填写刮削源密钥时不显示刮削入口。
   const scrapeStatus = useQuery({ queryKey: scrapeStatusQueryKey, queryFn: fetchScrapeStatus, staleTime: 60_000 });
@@ -68,19 +69,6 @@ export function BookMetadataPanel({ book }: { book: Book }) {
   });
   const error = [save, cover, uncover, remove].find((m) => m.isError)?.error;
 
-  function addTag() {
-    const tag = tagInput.trim();
-    if (tag && !draft.tags.includes(tag)) setDraft({ ...draft, tags: [...draft.tags, tag] });
-    setTagInput("");
-  }
-  function onTagKey(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      addTag();
-    } else if (e.key === "Backspace" && !tagInput && draft.tags.length > 0) {
-      setDraft({ ...draft, tags: draft.tags.slice(0, -1) });
-    }
-  }
   function onCoverFile(file: File | undefined) {
     if (!file) return;
     if (file.size > MAX_COVER_BYTES) {
@@ -140,33 +128,49 @@ export function BookMetadataPanel({ book }: { book: Book }) {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="meta-tags">标签</Label>
-              <div className="flex flex-wrap items-center gap-1.5 rounded-lg border px-2 py-1.5">
-                {draft.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="gap-1">
-                    {tag}
-                    <button
-                      type="button"
-                      aria-label={`移除标签 ${tag}`}
-                      onClick={() => setDraft({ ...draft, tags: draft.tags.filter((t) => t !== tag) })}
-                    >
-                      ×
-                    </button>
-                  </Badge>
-                ))}
-                <input
-                  id="meta-tags"
-                  className="min-w-24 flex-1 bg-transparent text-sm outline-none"
-                  value={tagInput}
-                  maxLength={20}
-                  placeholder={draft.tags.length ? "" : "输入后按回车添加"}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={onTagKey}
-                  onBlur={addTag}
+              <ChipInput id="meta-tags" values={draft.tags} maxLength={20} removeLabel="移除标签" onChange={(tags) => setDraft({ ...draft, tags })} />
+              <span className="text-xs text-muted-foreground">
+                最多 20 个，每个不超过 20 字。阅读客户端的「分类」一栏依次显示分类、子分类与标签；发现页按标签列出书，新增标签后重新导入书源才会出现新的入口。
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="meta-genre">分类</Label>
+                <Input id="meta-genre" value={draft.genre ?? ""} maxLength={50} onChange={(e) => setDraft({ ...draft, genre: e.target.value })} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="meta-subgenre">子分类</Label>
+                <Input
+                  id="meta-subgenre"
+                  value={draft.subgenre ?? ""}
+                  maxLength={50}
+                  onChange={(e) => setDraft({ ...draft, subgenre: e.target.value })}
                 />
               </div>
-              <span className="text-xs text-muted-foreground">
-                最多 20 个，每个不超过 20 字。阅读客户端把标签显示为分类，发现页按标签列出书；新增标签后重新导入书源才会出现新的入口。
-              </span>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="meta-status">连载状态</Label>
+                <select
+                  id="meta-status"
+                  className="h-8 rounded-lg border bg-transparent px-2 text-sm"
+                  value={draft.serialStatus ?? ""}
+                  onChange={(e) => setDraft({ ...draft, serialStatus: (e.target.value || null) as BookMetadata["serialStatus"] })}
+                >
+                  <option value="">未知</option>
+                  <option value="ongoing">连载</option>
+                  <option value="completed">完结</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="meta-aliases">别名</Label>
+              <ChipInput
+                id="meta-aliases"
+                values={draft.aliases}
+                maxLength={200}
+                removeLabel="移除别名"
+                onChange={(aliases) => setDraft({ ...draft, aliases })}
+              />
+              <span className="text-xs text-muted-foreground">最多 20 个。阅读客户端搜索时也匹配别名。</span>
             </div>
             <div className="flex gap-2">
               <Button size="sm" disabled={busy || !draft.title.trim()} onClick={() => save.mutate(draft)}>
@@ -199,6 +203,7 @@ export function BookMetadataPanel({ book }: { book: Book }) {
               )}
             </div>
             <p className="whitespace-pre-wrap text-sm text-muted-foreground">{book.intro || "没有简介。"}</p>
+            <BookDescriptionView book={book} />
             {book.scrapeUrl && (
               <p className="text-xs text-muted-foreground">
                 资料来源：
@@ -234,7 +239,7 @@ export function BookMetadataPanel({ book }: { book: Book }) {
         {error && <p className="text-sm text-destructive">{describeError(error)}</p>}
       </div>
       <ScrapeDialog
-        target={{ title: book.title, author: book.author, intro: book.intro, tags: book.tags, coverUrl: coverUrl(book) }}
+        target={{ ...book, coverUrl: coverUrl(book) }}
         onApply={async (scraped, fields) => {
           await applyScrape(book.id, scraped.ref, fields);
           await refresh();
@@ -246,4 +251,13 @@ export function BookMetadataPanel({ book }: { book: Book }) {
   );
 }
 
-const pick = (book: Book): BookMetadata => ({ title: book.title, author: book.author, intro: book.intro, tags: book.tags });
+const pick = (book: Book): BookMetadata => ({
+  title: book.title,
+  author: book.author,
+  intro: book.intro,
+  tags: book.tags,
+  genre: book.genre,
+  subgenre: book.subgenre,
+  serialStatus: book.serialStatus,
+  aliases: book.aliases,
+});

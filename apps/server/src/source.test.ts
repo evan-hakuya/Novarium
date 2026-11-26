@@ -69,6 +69,8 @@ function legadoClient(source: BookSource, fetchApi: (url: string, init?: Request
       return {
         name: jsonPath(res.body, source.ruleBookInfo.name!),
         intro: jsonPath(res.body, source.ruleBookInfo.intro!) as string,
+        kind: jsonPath(res.body, source.ruleBookInfo.kind!) as string,
+        wordCount: jsonPath(res.body, source.ruleBookInfo.wordCount!) as string,
         tocUrl: new URL(jsonPath(res.body, source.ruleBookInfo.tocUrl!), bookUrl).toString(),
       };
     },
@@ -153,6 +155,25 @@ describe("书源", () => {
     expect((await client.bookInfo(book!.bookUrl)).intro).toBe(`所有者写的简介\n\n资料来源：DaoSearch ${url}`);
     const [other] = await client.search("纯净");
     expect((await client.bookInfo(other!.bookUrl)).intro).toBe("共 1 章");
+  });
+
+  it("描述字段：分类为「分类,子分类,标签」，提供源站字数，搜索匹配别名；没有刮削过的书不变", async () => {
+    const client = legadoClient((await createToken("我的手机")).bookSource, app.fetchApi);
+    const id = "11111111-1111-4111-8111-111111111111";
+    await app.deps.db.insert(schema.bookTags).values({ bookId: id, tag: "悬疑" });
+    const [book] = await client.search("归藏");
+    expect(await client.bookInfo(book!.bookUrl)).toMatchObject({ kind: "悬疑", wordCount: "" });
+    expect(await client.search("别名")).toEqual([]);
+
+    await app.deps.db
+      .update(schema.books)
+      .set({ genre: "玄幻", subgenre: "异世大陆", sourceWordCount: 4467719, aliases: ["旧的别名", 'LOTM"'] })
+      .where(eq(schema.books.id, id));
+    expect(await client.bookInfo(book!.bookUrl)).toMatchObject({ kind: "玄幻,异世大陆,悬疑", wordCount: "446.8万字" });
+    expect((await client.search("别名")).map((b) => b.name)).toEqual(["归藏试读"]);
+    expect((await client.search("lotm")).map((b) => b.name)).toEqual(["归藏试读"]);
+    // 别名以 JSON 存储；不匹配 JSON 的引号与逗号。
+    expect(await client.search('","')).toEqual([]);
   });
 
   describe("发现页", () => {

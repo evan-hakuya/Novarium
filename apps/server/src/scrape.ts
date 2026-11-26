@@ -17,6 +17,13 @@ export interface ScrapeCandidate {
   platform: string;
 }
 
+/** 首发日期。date 精度不定：YYYY-MM-DD、YYYY-MM 或 YYYY；precision 现在为 day、month 或 year，刮削源以后可能增加新值，所以保持 string；estimated 表示是刮削源估算的。 */
+export interface Released {
+  date: string;
+  precision: string;
+  estimated: boolean;
+}
+
 /** 按 ID 读取到的作品。 */
 export interface ScrapedBook extends ScrapeCandidate {
   intro: string | null;
@@ -24,8 +31,21 @@ export interface ScrapedBook extends ScrapeCandidate {
   /** 字数（汉字）。 */
   wordCount: number | null;
   status: "ongoing" | "completed" | null;
-  /** 首发日期，精度不定：YYYY-MM-DD、YYYY-MM 或 YYYY。 */
-  releasedAt: string | null;
+  released: Released | null;
+  genre: string | null;
+  subgenre: string | null;
+  /** 别名：曾用名、源站给出的其他书名与英文书名，不含当前书名。 */
+  aliases: string[];
+  authorEn: string | null;
+  /** 源站最后更新章节的时间，ISO 8601。 */
+  sourceUpdatedAt: string | null;
+  /** 平台标记，例如 { key: "signed", label: "Signed", value: "Signed" }。key 的取值见 docs/agents/daosearch.md。 */
+  facets: { key: string; label: string; value: string }[];
+  mature: boolean | null;
+  /** 这本书在源站的页面（https）。 */
+  sourceUrl: string | null;
+  /** 其他平台上的同一本书。 */
+  alsoOn: { platform: string; url: string }[];
 }
 
 /** 刮削源当天的用量。刮削源不提供的项为 null。 */

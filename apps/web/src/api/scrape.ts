@@ -1,4 +1,4 @@
-import { ApiError, describeError, request } from "./books";
+import { ApiError, describeError, request, type Released } from "./books";
 
 /** 刮削的状态（ADR 0006）。configured：已填写 DaoSearch 密钥；keyHint：密钥的前后几位。 */
 export interface ScrapeStatus {
@@ -46,10 +46,36 @@ export interface ScrapedBook extends ScrapeCandidate {
   tags: string[];
   wordCount: number | null;
   status: "ongoing" | "completed" | null;
-  releasedAt: string | null;
+  released: Released | null;
+  genre: string | null;
+  subgenre: string | null;
+  aliases: string[];
+  authorEn: string | null;
+  sourceUpdatedAt: string | null;
+  facets: { key: string; label: string; value: string }[];
+  mature: boolean | null;
+  sourceUrl: string | null;
+  alsoOn: { platform: string; url: string }[];
 }
 
-export type ScrapeField = "title" | "author" | "intro" | "tags" | "cover";
+export type ScrapeField =
+  | "title"
+  | "author"
+  | "intro"
+  | "tags"
+  | "cover"
+  | "genre"
+  | "subgenre"
+  | "status"
+  | "aliases"
+  | "authorEn"
+  | "wordCount"
+  | "released"
+  | "sourceUpdatedAt"
+  | "facets"
+  | "mature"
+  | "sourceUrl"
+  | "alsoOn";
 
 /** 搜索与详情在浏览器内缓存到页面关闭。服务端另有 6 小时的缓存，重复请求不消耗点数。 */
 export const SCRAPE_STALE_MS = Infinity;
@@ -85,13 +111,40 @@ const platformNames: Record<string, string> = {
 
 export const platformName = (platform: string) => platformNames[platform] ?? platform;
 
-/** 字数，例如「446.5 万字」。 */
-export function formatWordCount(count: number | null): string | null {
-  if (count === null) return null;
-  return count >= 10_000 ? `${Number((count / 10_000).toFixed(1))} 万字` : `${count} 字`;
-}
+export { formatWordCount } from "@novarium/core";
 
 export const statusText = { ongoing: "连载", completed: "完结" } as const;
+
+/** 首发日期，例如「2017（估算）」。 */
+export function formatReleased(released: Released | null): string | null {
+  if (!released) return null;
+  return released.estimated ? `${released.date}（估算）` : released.date;
+}
+
+export const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("zh-CN") : null);
+
+const facetNames: Record<string, string> = {
+  audience: "读者",
+  pov: "视角",
+  theme: "题材",
+  age: "年龄",
+  access: "阅读方式",
+  signed: "签约",
+  vip: "VIP",
+  paid_vip: "付费 VIP",
+  editors_pick: "编辑推荐",
+  exclusive: "独家",
+  first_on_source: "首发",
+  licensed: "授权",
+  licensed_from: "授权来源",
+  author_tier: "作者等级",
+  fan_title: "同人",
+  branching_story: "多分支",
+  first_published: "首发月份",
+};
+
+/** 平台标记，例如「签约：Signed」。不认识的 key 用刮削源给出的名称。 */
+export const formatFacet = (facet: { key: string; label: string; value: string }) => `${facetNames[facet.key] ?? facet.label}：${facet.value}`;
 
 const kindText: Record<string, string> = {
   invalid_key: "密钥无效或已撤销，请在 DaoSearch 账号页检查",

@@ -13,8 +13,46 @@ export interface BookSummary {
   coverKey: string | null;
 }
 
+/** 首发日期。date 为 YYYY-MM-DD、YYYY-MM 或 YYYY；precision 现在为 day、month 或 year，刮削源以后可能增加新值；estimated 表示是估算。 */
+export interface Released {
+  date: string;
+  precision: string;
+  estimated: boolean;
+}
+
+/** 描述字段（#42）。分类、子分类、连载状态与别名可以编辑；其余只读，刮削时写入。没有刮削过时为空。 */
+export interface BookDescription {
+  genre: string | null;
+  subgenre: string | null;
+  serialStatus: "ongoing" | "completed" | null;
+  aliases: string[];
+  authorEn: string | null;
+  sourceWordCount: number | null;
+  released: Released | null;
+  sourceUpdatedAt: string | null;
+  facets: { key: string; label: string; value: string }[] | null;
+  mature: boolean | null;
+  sourceUrl: string | null;
+  alsoOn: { platform: string; url: string }[] | null;
+}
+
+export const emptyDescription: BookDescription = {
+  genre: null,
+  subgenre: null,
+  serialStatus: null,
+  aliases: [],
+  authorEn: null,
+  sourceWordCount: null,
+  released: null,
+  sourceUpdatedAt: null,
+  facets: null,
+  mature: null,
+  sourceUrl: null,
+  alsoOn: null,
+};
+
 export interface BookDetail {
-  book: {
+  book: BookDescription & {
     id: string;
     title: string;
     author: string;
@@ -84,6 +122,10 @@ export interface BookMetadata {
   author: string;
   intro: string;
   tags: string[];
+  genre: string | null;
+  subgenre: string | null;
+  serialStatus: "ongoing" | "completed" | null;
+  aliases: string[];
 }
 
 export const updateBook = (id: string, metadata: BookMetadata) =>

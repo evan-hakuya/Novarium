@@ -36,7 +36,7 @@
 | 字段 | 用法 |
 |---|---|
 | `title.zh` `author.zh` `synopsis_zh` `tags[].zh` `cover_url` | 写入书名、作者、简介、标签（合并）、封面（下载后存入自己的存储） |
-| `genre.zh` `subgenre.zh` `status` `word_count` `released` `updated_at` `other_names` `title.en` `author.en` `facets` `mature` `source_url` `also_on` | 新增的描述字段 |
+| `genre.zh` `subgenre.zh` `status` `word_count` `released` `updated_at` `other_names` `title.en` `author.en` `facets` `mature` `source_url` `also_on` | 描述字段（#42），存在 `books` 表。别名取 `other_names[].name`（没有中文时取 `name_translated`）与 `title.en`，合并进现有别名。`facets` 保存 `key`、`label`、`value_label`，后台按 `key` 显示中文名称，未知的 `key` 显示 `label`。`source_url` 与 `also_on[].url` 只接受 https。分类、子分类、连载状态与别名可由所有者编辑。书源的 `kind` 为「分类,子分类,标签」，`wordCount` 取 `word_count`，搜索也匹配别名 |
 | `source` `source_book_id` `url` | 刮削来源 ID 与署名链接 |
 | `metrics` `rankings` `source_rating_count` `source_comment_count` `booklist_count` `pace` `availability` `refreshed_at` | 快照 |
 | `latest_chapter(_en)` `chapter_count` `synopsis_en` `english_translation` `licences` `translated_by` `*_url` | 不用 |

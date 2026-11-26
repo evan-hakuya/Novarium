@@ -9,6 +9,9 @@ import {
   getTags,
   MAX_AUTHOR_LENGTH,
   MAX_COVER_BYTES,
+  MAX_ALIAS_LENGTH,
+  MAX_ALIASES,
+  MAX_GENRE_LENGTH,
   MAX_INTRO_LENGTH,
   MAX_TAG_LENGTH,
   MAX_TAGS,
@@ -72,17 +75,28 @@ export function rankByAuthor(results: ScrapeCandidate[], author: string): Scrape
   return [...results.filter((r) => r.author?.trim() === own), ...results.filter((r) => r.author?.trim() !== own)];
 }
 
-/** 把刮削到的标签合并进现有标签：现有标签全部保留，跳过重复与过长的标签，总数不超过上限。 */
-export function mergeTags(existing: string[], scraped: string[]): string[] {
+/** 把刮削到的值合并进现有列表：现有值全部保留，跳过重复与过长的值，总数不超过上限。 */
+function mergeList(existing: string[], scraped: string[], max: number, tooLong: (value: string) => boolean): string[] {
   const merged = [...existing];
   for (const raw of scraped) {
-    const tag = raw.trim();
-    if (merged.length >= MAX_TAGS) break;
-    if (!tag || [...tag].length > MAX_TAG_LENGTH || merged.includes(tag)) continue;
-    merged.push(tag);
+    const value = raw.trim();
+    if (merged.length >= max) break;
+    if (!value || tooLong(value) || merged.includes(value)) continue;
+    merged.push(value);
   }
   return merged;
 }
+
+/** 标签合并，规则见 mergeList。 */
+export const mergeTags = (existing: string[], scraped: string[]) =>
+  mergeList(existing, scraped, MAX_TAGS, (tag) => [...tag].length > MAX_TAG_LENGTH);
+
+/** 别名合并，规则见 mergeList。 */
+export const mergeAliases = (existing: string[], scraped: string[]) =>
+  mergeList(existing, scraped, MAX_ALIASES, (alias) => alias.length > MAX_ALIAS_LENGTH);
+
+/** 平台标记与其他平台的书最多保存的条数。 */
+const MAX_LIST_ITEMS = 20;
 
 /** 截到最多 max 个 UTF-16 单位，不切断代理对。与元数据接口的 length 校验一致。 */
 function clip(text: string, max: number): string {
@@ -134,7 +148,25 @@ async function downloadCover(doFetch: typeof fetch, url: string): Promise<{ byte
   }
 }
 
-const FIELDS = ["title", "author", "intro", "tags", "cover"] as const;
+const FIELDS = [
+  "title",
+  "author",
+  "intro",
+  "tags",
+  "cover",
+  "genre",
+  "subgenre",
+  "status",
+  "aliases",
+  "authorEn",
+  "wordCount",
+  "released",
+  "sourceUpdatedAt",
+  "facets",
+  "mature",
+  "sourceUrl",
+  "alsoOn",
+] as const;
 type Field = (typeof FIELDS)[number];
 
 // 刮削设置。挂在 /api/admin 下，受 session 保护。
@@ -211,7 +243,11 @@ export function createScrapeRoutes() {
       return c.json({ error: "invalid_body" }, 400);
     }
     const chosen = new Set(fields as Field[]);
-    const current = await db.select({ coverKey: books.coverKey }).from(books).where(eq(books.id, bookId)).get();
+    const current = await db
+      .select({ title: books.title, coverKey: books.coverKey, aliases: books.aliases })
+      .from(books)
+      .where(eq(books.id, bookId))
+      .get();
     if (!current) return c.json({ error: "not_found" }, 404);
     const source = await getScrapeSource(deps);
     if (!source) return c.json({ error: "scrape_not_configured" }, 409);
@@ -235,6 +271,26 @@ export function createScrapeRoutes() {
     if (chosen.has("title") && title) set.title = clip(title, MAX_TITLE_LENGTH);
     if (chosen.has("author") && scraped.author?.trim()) set.author = clip(scraped.author.trim(), MAX_AUTHOR_LENGTH);
     if (chosen.has("intro") && scraped.intro?.trim()) set.intro = clip(scraped.intro.trim(), MAX_INTRO_LENGTH);
+    if (chosen.has("genre") && scraped.genre?.trim()) set.genre = clip(scraped.genre.trim(), MAX_GENRE_LENGTH);
+    if (chosen.has("subgenre") && scraped.subgenre?.trim()) set.subgenre = clip(scraped.subgenre.trim(), MAX_GENRE_LENGTH);
+    if (chosen.has("status") && scraped.status) set.serialStatus = scraped.status;
+    if (chosen.has("aliases") && scraped.aliases.length > 0) {
+      // 别名不含书名：既排除现在的书名，也排除这次写入的书名。
+      const titles = new Set([current.title, set.title]);
+      set.aliases = mergeAliases(current.aliases, scraped.aliases.filter((alias) => !titles.has(alias.trim())));
+    }
+    // 以下是只读字段：所有者不能编辑，勾选后按刮削结果整体替换；刮削结果为空时清空，避免留下源站已删除的旧值。
+    if (chosen.has("authorEn")) set.authorEn = scraped.authorEn?.trim() ? clip(scraped.authorEn.trim(), MAX_AUTHOR_LENGTH) : null;
+    if (chosen.has("wordCount")) set.sourceWordCount = scraped.wordCount;
+    if (chosen.has("released")) set.released = scraped.released;
+    if (chosen.has("sourceUpdatedAt")) {
+      const updatedAt = scraped.sourceUpdatedAt ? new Date(scraped.sourceUpdatedAt) : null;
+      set.sourceUpdatedAt = updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : null;
+    }
+    if (chosen.has("facets")) set.facets = scraped.facets.length > 0 ? scraped.facets.slice(0, MAX_LIST_ITEMS) : null;
+    if (chosen.has("mature")) set.mature = scraped.mature;
+    if (chosen.has("sourceUrl")) set.sourceUrl = scraped.sourceUrl;
+    if (chosen.has("alsoOn")) set.alsoOn = scraped.alsoOn.length > 0 ? scraped.alsoOn.slice(0, MAX_LIST_ITEMS) : null;
 
     const queries: BatchQuery[] = [];
     let stale: string[] = [];

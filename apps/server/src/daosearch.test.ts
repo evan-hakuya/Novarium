@@ -35,7 +35,22 @@ const book = {
   tags: [{ en: "Mystery", zh: "悬疑" }, { en: null, zh: "克苏鲁" }],
   word_count: 4465000,
   status: "completed",
-  released: { date: "2018-04-01", precision: "day", estimated: false },
+  released: { date: "2018-04-01", precision: "day", estimated: false, from_source: null, earlier_copy: null },
+  genre: { en: "Eastern Fantasy", zh: "玄幻" },
+  subgenre: { en: null, zh: "异世大陆" },
+  other_names: [
+    { name: "诡秘之主", name_translated: null, kind: "source_alias", last_seen_at: "x" },
+    { name: null, name_translated: "LOTM", kind: "nickname", last_seen_at: "x" },
+    { name: "旧书名", name_translated: "Old", kind: "former", last_seen_at: "x" },
+  ],
+  updated_at: "2025-08-14T01:00:00Z",
+  facets: [{ key: "signed", label: "Signed", value: "true", value_label: "Signed" }, { key: "x", label: "", value: "", value_label: "" }],
+  mature: false,
+  source_url: "https://www.qidian.com/book/1010868264/",
+  also_on: [
+    { source: "zongheng", source_book_id: "1", url: "https://daosearch.io/zongheng/book/1/x" },
+    { source: "qimao", source_book_id: "2", url: "javascript:alert(1)" },
+  ],
 };
 
 const scraped = {
@@ -49,7 +64,16 @@ const scraped = {
   platform: "qidian",
   wordCount: 4465000,
   status: "completed",
-  releasedAt: "2018-04-01",
+  released: { date: "2018-04-01", precision: "day", estimated: false },
+  genre: "玄幻",
+  subgenre: "异世大陆",
+  aliases: ["LOTM", "旧书名", "Lord of the Mysteries"],
+  authorEn: null,
+  sourceUpdatedAt: "2025-08-14T01:00:00Z",
+  facets: [{ key: "signed", label: "Signed", value: "Signed" }],
+  mature: false,
+  sourceUrl: "https://www.qidian.com/book/1010868264/",
+  alsoOn: [{ platform: "zongheng", url: "https://daosearch.io/zongheng/book/1/x" }],
 };
 
 async function scrapeError(promise: Promise<unknown>) {
