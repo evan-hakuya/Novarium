@@ -27,4 +27,4 @@ Deploy runs `wrangler deploy` before `wrangler d1 migrations apply DB --remote`,
 
 ## Repairing history
 
-When an Unverified or badly formatted commit lands on `main`: move it to a branch, rewrite it as one Conventional Commit, and reset `main` to the last good commit. The ruleset blocks the force push, so ask the owner first. Then disable the ruleset (`gh api -X PUT repos/evan-hakuya/Novarium/rulesets/<id> -f enforcement=disabled`), push with `--force-with-lease=main:<bad-sha>`, and set `enforcement=active` again right away. Continue from step 6.
+When an Unverified or badly formatted commit lands on `main`: move it to a branch, rewrite it as one Conventional Commit, and reset `main` to the last good commit. The ruleset blocks the force push, so ask the owner first. Then disable the ruleset (get `<id>` from `gh api repos/evan-hakuya/Novarium/rulesets -q '.[].id'`, then `gh api -X PUT repos/evan-hakuya/Novarium/rulesets/<id> -f enforcement=disabled`), push with `--force-with-lease=main:<bad-sha>`, and set `enforcement=active` again right away. Continue from step 6.
