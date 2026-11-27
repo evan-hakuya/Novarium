@@ -59,11 +59,17 @@ describe("AI 复核条目", () => {
     const { items } = setup(base, results);
     const [leave, notice] = items;
     const fixed = fixAiLines(base, [leave!, notice!]);
-    expect(fixed.lineOverrides).toEqual(["chapter|0|请假条", "body|0|番外篇"]);
-    expect(setup(fixed, results).chapters.map((c) => c.title)).toEqual(["第一章 开端", "请假条", "第二章 继续"]);
+    expect(fixed.lineOverrides).toEqual(["chapter|0|请假条", "notice|0|番外篇"]);
+    // 作者公告单独成章，不带序号。
+    expect(setup(fixed, results).chapters.map((c) => [c.title, c.number, c.notice ?? false])).toEqual([
+      ["第一章 开端", 1, false],
+      ["请假条", null, false],
+      ["第二章 继续", 2, false],
+      ["番外篇", null, true],
+    ]);
 
     const undone = unfixAiLines(fixed, [setup(fixed, results).items.find((i) => i.ai.text === "请假条")!]);
-    expect(undone).toMatchObject({ lineOverrides: ["body|0|番外篇"], lineIgnores: ["chapter|0|请假条"] });
+    expect(undone).toMatchObject({ lineOverrides: ["notice|0|番外篇"], lineIgnores: ["chapter|0|请假条"] });
     expect(setup(undone, results).items.map((i) => [i.ai.text, i.status])).toEqual([
       ["番外篇", "fixed"],
       ["请假条", "ignored"],
@@ -74,7 +80,18 @@ describe("AI 复核条目", () => {
     expect(unignoreAiLines(ignored, setup(ignored, results).items.filter((i) => i.status === "ignored")).lineIgnores).toEqual([]);
 
     const all = undoAllAiFixes(fixed);
-    expect(all).toMatchObject({ lineOverrides: [], lineIgnores: ["chapter|0|请假条", "body|0|番外篇"] });
+    expect(all).toMatchObject({ lineOverrides: [], lineIgnores: ["chapter|0|请假条", "notice|0|番外篇"] });
+  });
+
+  it("规则已判为作者公告的行，AI 判为章节或作者公告时都不生成条目", () => {
+    const noticeText = ["第一章 开端", "　　正文。", "上架感言", "　　谢谢。", "第二章 继续", "　　正文。"].join("\n");
+    const candidates = findCandidateLines(noticeText, base);
+    const chapters = splitChapters(noticeText, base);
+    expect(chapters.map((c) => [c.title, c.number, c.notice ?? false])).toContainEqual(["上架感言", null, true]);
+    for (const kind of ["chapter", "notice"] as const) {
+      const results = new Map([["0|上架感言", { kind, confidence: 0.9 }]]);
+      expect(reviewAiLines(candidates, chapters, base, results)).toEqual([]);
+    }
   });
 
   it("只发送还没有判断、也没有处理过的候选行，优先发送规则最可能出错的行", () => {

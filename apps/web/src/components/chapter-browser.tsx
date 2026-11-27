@@ -9,6 +9,8 @@ export interface ChapterItem {
   byteLength: number;
   /** 所属卷名；没有卷时为 null 或不提供。 */
   volume?: string | null;
+  /** 作者公告；不提供时按标题判断（服务端不保存这一项）。 */
+  notice?: boolean;
 }
 
 /** 正文区域自己滚动（宽屏两栏）；窄屏一栏时由页面滚动。 */
@@ -121,7 +123,7 @@ export function ChapterBrowser({
                 {c.title}
               </span>
               {c.byteLength === 0 && <span className="shrink-0 text-xs text-muted-foreground">空</span>}
-              {isNoticeTitle(c.title) && <span className="shrink-0 text-xs text-muted-foreground">作者公告</span>}
+              {(c.notice ?? isNoticeTitle(c.title)) && <span className="shrink-0 text-xs text-muted-foreground">作者公告</span>}
             </button>
           </li>
         ))}

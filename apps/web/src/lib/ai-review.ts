@@ -6,7 +6,6 @@ import {
   type ChapterDraft,
   type LineKind,
   type ProcessOptions,
-  type SplitLineKind,
 } from "@novarium/core";
 
 /** AI 对一行的判断。 */
@@ -26,7 +25,7 @@ export interface AiLine {
   text: string;
   occurrence: number;
   /** 规则给出的类别；这一行已不是候选行时为 null。 */
-  rule: SplitLineKind | null;
+  rule: LineKind | null;
   /** 待处理：AI 的判断；已修复：修正后的类别；已忽略：被忽略的判断。 */
   suggested: LineKind;
   confidence: number | null;
@@ -46,8 +45,12 @@ export const isAiKey = (key: string) => key.startsWith(AI_KEY_PREFIX);
 
 export const LINE_KIND_TEXT: Record<LineKind, string> = { chapter: "章节", volume: "卷名", notice: "作者公告", body: "正文" };
 
-/** AI 与规则一致时不需要处理。规则判为正文的作者公告本来就在正文里，也不需要处理。 */
-const agrees = (rule: SplitLineKind, ai: LineKind) => ai === rule || (ai === "notice" && rule === "body");
+/**
+ * AI 与规则一致时不需要处理。作者公告也是章节，所以规则判为公告、AI 判为章节时一致。
+ * 规则判为正文的作者公告仍留在正文里。
+ */
+const agrees = (rule: LineKind, ai: LineKind) =>
+  ai === rule || (ai === "notice" && rule === "body") || (ai === "chapter" && rule === "notice");
 
 const byId = (keys: readonly string[]) => {
   const map = new Map<string, NonNullable<ReturnType<typeof parseLineOverrideKey>>>();
@@ -122,10 +125,10 @@ export function autoApply(candidates: readonly CandidateLine[], options: Process
   return added.length ? { ...options, lineOverrides: [...options.lineOverrides, ...added] } : null;
 }
 
-/** 修复：按 AI 的判断修正这一行。作者公告并入上一章，即把这一行设为正文。 */
+/** 修复：按 AI 的判断修正这一行。作者公告单独成章，不带序号。 */
 export function fixAiLines(options: ProcessOptions, items: readonly AiReviewItem[]): ProcessOptions {
   const ids = new Set(items.map((i) => i.ai.id));
-  const added = items.map((i) => lineOverrideKey(i.ai.suggested === "notice" ? "body" : i.ai.suggested, i.ai.text, i.ai.occurrence));
+  const added = items.map((i) => lineOverrideKey(i.ai.suggested, i.ai.text, i.ai.occurrence));
   return {
     ...options,
     lineOverrides: [...dropIds(options.lineOverrides, ids), ...added],
