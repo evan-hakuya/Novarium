@@ -1,5 +1,5 @@
 // 移植自 rockbenben/novel-processor（MIT，© 2026 rockbenben），见同目录 README.md 与 LICENSE。
-import { chapterPattern, isChapterTitleLine, detectChapterUnit, pureNumberRegex, novelSectionHeaderRegex, specialLineStartRegex, numberStartRegex, punctuationEndRegex, numberEndRegex, CHAPTER_MARKERS } from "./regex";
+import { chapterPattern, isChapterTitleLine, isNoticeTitle, detectChapterUnit, pureNumberRegex, novelSectionHeaderRegex, specialLineStartRegex, numberStartRegex, punctuationEndRegex, numberEndRegex, CHAPTER_MARKERS } from "./regex";
 import { splitTextIntoLines, compressNewlines, normalizeNewlines, toHalfWidth, cleanLines, filterLines, splitParagraph, dedupeAdjacentLines, isSeparatorBar, escapeRegExp } from "./text";
 
 // 章节标题判定（标题正则 + 长度/标点约束）统一收在 utils/regex.ts 的 isChapterTitleLine
@@ -114,6 +114,8 @@ export const romanToInt = (s: string): number | null => {
 export const extractChapterOrder = (title: string): number | null => {
   // 带编号的番外标题使用自己的序列，不是正文章节序号。
   if (/^\s*(?:序章|序言|引子|前言|卷首语|扉页|楔子|终章|后记|附录|尾声|番外)/.test(title)) return null;
+  // 「第一部总结兼请假」这类作者公告的编号不是章节序号。
+  if (isNoticeTitle(title)) return null;
   // 常见：第十二章 / 第12章 / 第一万章 / 第壹拾章 / Chapter 5 / CH 5
   const m = title.match(/第?([〇零一二三四五六七八九十百千万两壹贰叁肆伍陆柒捌玖拾佰仟萬\d]+)\s*[章节卷集幕回部篇]/);
   if (m) {

@@ -1,5 +1,5 @@
 import { extractChapterOrder } from "./vendor/novel-processor/novel";
-import { CHAPTER_TITLE_MAX_LEN, detectChapterUnit, isChapterTitleLine } from "./vendor/novel-processor/regex";
+import { CHAPTER_TITLE_MAX_LEN, detectChapterUnit, isChapterTitleLine, isNoticeTitle } from "./vendor/novel-processor/regex";
 import { applyNumberFixes, findNumberAnomalies } from "./numbering";
 import { candidateLines, lineIds, lineOverrideMap, markSuspicious, type CandidateLine } from "./line-review";
 import type { ChapterDraft } from "./types";
@@ -113,7 +113,7 @@ const chapterInVolumeTitleRegex = new RegExp(`第?\\s*${VOLUME_NUMERAL}\\s*[章�
 function volumeMatcher(unit: string | null): (line: string) => boolean {
   return (line) => {
     const t = line.trim();
-    if (!t || [...t].length > CHAPTER_TITLE_MAX_LEN || /[。！？!?]$/.test(t)) return false;
+    if (!t || [...t].length > CHAPTER_TITLE_MAX_LEN || /[。！？!?]$/.test(t) || isNoticeTitle(t)) return false;
     const m = volumeHeadRegex.exec(t);
     if (!m) return false;
     if (m[1] && m[1] === unit) return false;

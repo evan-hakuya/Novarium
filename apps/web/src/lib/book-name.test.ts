@@ -8,6 +8,11 @@ describe("guessBookName", () => {
     expect(guessBookName("书名 (说明) (某人) (Z-Library).txt")).toEqual({ title: "书名", author: "某人" });
     // 只剩一个括号时不当作者，改看原稿开头。
     expect(guessBookName("书名 (上) (z-lib.sk).txt", "作者：某人")).toEqual({ title: "书名 (上)", author: "某人" });
+    // 剩下的括号正是作者时，从书名里去掉。
+    expect(guessBookName("诡秘之主 (爱潜水的乌贼) (z-library.sk).txt", "作者：爱潜水的乌贼")).toEqual({
+      title: "诡秘之主",
+      author: "爱潜水的乌贼",
+    });
   });
 
   it("常见格式不变", () => {
