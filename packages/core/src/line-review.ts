@@ -105,9 +105,8 @@ export function candidateLines(
   const ids = lineIds(lines);
   const leads = new Set<number>();
   for (const t of firstChapters) {
-    let j = t - 1;
-    while (j >= 0 && !lines[j]!.trim()) j--;
-    if (j >= 0 && !ruleKinds.has(j) && isShortLine(lines[j]!.trim())) leads.add(j);
+    const j = leadLine(lines, t);
+    if (j !== null && !ruleKinds.has(j)) leads.add(j);
   }
   const candidates: CandidateLine[] = [];
   let offset = 0;
@@ -181,6 +180,13 @@ function looksLikeTitle(text: string): boolean {
 }
 
 const isShortLine = (text: string) => [...text].length <= SHORT_LINE_CHARS && titleShaped(text);
+
+/** 标题行 t 前面最近的非空行，是不超过 20 字、形状像标题的短行时返回它的下标，否则返回 null。 */
+export function leadLine(lines: readonly string[], t: number): number | null {
+  let j = t - 1;
+  while (j >= 0 && !lines[j]!.trim()) j--;
+  return j >= 0 && isShortLine(lines[j]!.trim()) ? j : null;
+}
 
 /** 清洗时保持单独成行的词：请假条用词与标题用词。「第」「卷」在折行正文的片段里太常见，不在其中。 */
 const KEEP_LINE_WORDS = new RegExp(`${LEAVE_WORDS.source}|${EXTRA_TITLE_WORDS.source}`);
