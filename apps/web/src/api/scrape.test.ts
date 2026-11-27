@@ -17,7 +17,8 @@ describe("平台标记的中文", () => {
         f("age", "Age", "13+", "13+"),
         f("first_published", "First published", "Dec 2019", "2019-12"),
       ].map(formatFacet),
-    ).toEqual(["男频", "签约", "作家等级 白金", "视角 女主", "VIP付费", "VIP付费", "年龄 13+", "首发 2019年12月"]);
+    ).toEqual(["男频", "签约", "作家等级 白金", "视角 女主", "VIP付费", "VIP付费", "年龄 13+", "首发月份 2019年12月"]);
+    expect(formatFacet(f("signed", "Signed", "No", "false"))).toBeNull();
   });
 
   it("#99 之前保存的没有原值，按英文对照；没见过的值与 key 显示源站文字", () => {

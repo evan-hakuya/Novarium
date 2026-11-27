@@ -44,7 +44,12 @@ const book = {
     { name: "旧书名", name_translated: "Old", kind: "former", last_seen_at: "x" },
   ],
   updated_at: "2025-08-14T01:00:00Z",
-  facets: [{ key: "signed", label: "Signed", value: "true", value_label: "Signed" }, { key: "x", label: "", value: "", value_label: "" }],
+  facets: [
+    { key: "signed", label: "Signed", value: "true", value_label: "Signed" },
+    { key: "x", label: "", value: "", value_label: "" },
+    // 原值不是字符串时不保存 raw。
+    { key: "vip", label: "VIP", value: true, value_label: "VIP" },
+  ],
   mature: false,
   source_url: "https://www.qidian.com/book/1010868264/",
   also_on: [
@@ -95,7 +100,10 @@ const scraped = {
   aliases: ["LOTM", "旧书名", "Lord of the Mysteries"],
   authorEn: null,
   sourceUpdatedAt: "2025-08-14T01:00:00Z",
-  facets: [{ key: "signed", label: "Signed", value: "Signed", raw: "true" }],
+  facets: [
+    { key: "signed", label: "Signed", value: "Signed", raw: "true" },
+    { key: "vip", label: "VIP", value: "VIP" },
+  ],
   mature: false,
   sourceUrl: "https://www.qidian.com/book/1010868264/",
   alsoOn: [{ platform: "zongheng", url: "https://daosearch.io/zongheng/book/1/x" }],

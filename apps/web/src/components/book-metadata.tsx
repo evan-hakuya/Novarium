@@ -198,9 +198,12 @@ export function BookMetadataPanel({ book }: { book: Book }) {
               // 平台标记：源站给的特殊标签，排在标签上方，与 DaoSearch 书页一致。
               <ul className="flex flex-wrap gap-1.5" aria-label="平台标记">
                 {facets.map((facet) => {
-                  const { name, value } = facetText(facet);
+                  const text = facetText(facet);
+                  if (!text) return null;
+                  const { name, value } = text;
                   return (
-                    <li key={facet.key}>
+                    // 同一个 key 可能有多个值，例如多个主题。
+                    <li key={`${facet.key}:${facet.raw ?? facet.value}`}>
                       <Badge variant="outline">
                         {name && <span className="font-normal text-muted-foreground">{name}</span>}
                         <span className="font-semibold">{value}</span>

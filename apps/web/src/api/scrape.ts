@@ -159,14 +159,18 @@ const named: Record<string, { name: string; values?: Record<string, string> }> =
   theme: { name: "主题", values: { Love: "爱情" } },
   age: { name: "年龄" },
   licensed_from: { name: "版权方", values: { "Chinese Online": "中文在线" } },
-  first_published: { name: "首发" },
+  first_published: { name: "首发月份" },
 };
 
 const hasHan = (s: string) => /\p{Script=Han}/u.test(s);
 
-/** 平台标记的中文显示：name 为空时只显示 value。DaoSearch 书页的标签区也是这样显示的。 */
-export function facetText(facet: Facet): { name: string | null; value: string } {
+/**
+ * 平台标记的中文显示：name 为空时只显示 value。DaoSearch 书页的标签区也是这样显示的。
+ * 是或否的标记为否时返回 null，不显示（实测中没有出现过否定值）。
+ */
+export function facetText(facet: Facet): { name: string | null; value: string } | null {
   const flag = flagNames[facet.key];
+  if (flag && facet.raw === "false") return null;
   if (flag && (facet.raw === "true" || facet.value === facet.label)) return { name: null, value: flag };
   const only = valueOnly[facet.key];
   const value = only?.[facet.raw ?? ""] ?? only?.[facet.value];
@@ -179,10 +183,10 @@ export function facetText(facet: Facet): { name: string | null; value: string } 
   return { name: n?.name ?? flag ?? facet.label, value: v };
 }
 
-/** 平台标记的文字，例如「男频」「作家等级 白金」。 */
+/** 平台标记的文字，例如「男频」「作家等级 白金」；不显示的标记为 null。 */
 export const formatFacet = (facet: Facet) => {
-  const { name, value } = facetText(facet);
-  return name ? `${name} ${value}` : value;
+  const text = facetText(facet);
+  return text && (text.name ? `${text.name} ${text.value}` : text.value);
 };
 
 const kindText: Record<string, string> = {
