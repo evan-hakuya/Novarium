@@ -38,6 +38,18 @@ export interface ScrapeCandidate {
   author: string | null;
   coverUrl: string | null;
   platform: string;
+  /** 搜索结果中带有：这个候选的详情在服务端缓存中的状态。 */
+  cached?: CacheStatus;
+}
+
+/** 一次请求在服务端缓存中的状态：fresh 不消耗点数；stale 内容没变时不消耗点数；none 消耗点数。 */
+export type CacheStatus = "fresh" | "stale" | "none";
+
+/** 一次请求的点数提示，例如「消耗 5 点」。 */
+export function costText(status: CacheStatus, points: number): string {
+  if (status === "fresh") return "已缓存，不消耗点数";
+  if (status === "stale") return "已缓存，内容没变时不消耗点数";
+  return `消耗 ${points} 点`;
 }
 
 /** 点击候选后读取到的作品详情。 */
@@ -88,6 +100,10 @@ export const scrapeBookQueryKey = (ref: string) => ["scrape", "book", ref] as co
 /** 搜索候选。author 用于把作者一致的候选排在前面。 */
 export const searchScrape = (q: string, author: string) =>
   request<{ results: ScrapeCandidate[] }>(`/api/admin/scrape/search?${new URLSearchParams({ q, author })}`).then((r) => r.results);
+
+/** 搜索前查这次搜索是否消耗点数。只查服务端缓存，不请求 DaoSearch。 */
+export const fetchSearchStatus = (q: string) =>
+  request<{ status: CacheStatus }>(`/api/admin/scrape/search/status?${new URLSearchParams({ q })}`).then((r) => r.status);
 
 export const fetchScrapedBook = (ref: string) =>
   request<{ book: ScrapedBook }>(`/api/admin/scrape/books?${new URLSearchParams({ ref })}`).then((r) => r.book);

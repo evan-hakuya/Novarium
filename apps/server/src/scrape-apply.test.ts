@@ -107,6 +107,7 @@ describe("刮削接口", () => {
 
   it("没有密钥时搜索、详情与写入返回 409，不请求 DaoSearch", async () => {
     expect((await call("GET", "/api/admin/scrape/search?q=x")).status).toBe(409);
+    expect((await call("GET", "/api/admin/scrape/search/status?q=x")).status).toBe(409);
     expect((await call("GET", "/api/admin/scrape/books?ref=qidian/2")).status).toBe(409);
     expect((await call("POST", `/api/admin/books/${BOOK_ID}/scrape`, { ref: "qidian/2", fields: [] })).status).toBe(409);
     expect(requests).toHaveLength(0);
@@ -128,7 +129,20 @@ describe("刮削接口", () => {
 
     it("搜索与详情：空参数返回 400", async () => {
       expect((await call("GET", "/api/admin/scrape/search?q=%20")).status).toBe(400);
+      expect((await call("GET", "/api/admin/scrape/search/status?q=%20")).status).toBe(400);
       expect((await call("GET", "/api/admin/scrape/books?ref=")).status).toBe(400);
+    });
+
+    it("搜索前的点数提示与候选的详情缓存状态只查缓存，不请求 DaoSearch", async () => {
+      const status = async () => ((await (await call("GET", `/api/admin/scrape/search/status?q=${encodeURIComponent("归藏")}`)).json()) as { status: string }).status;
+      expect(await status()).toBe("none");
+      expect(requests).toHaveLength(0);
+      const search = async () => ((await (await call("GET", `/api/admin/scrape/search?q=${encodeURIComponent("归藏")}`)).json()) as { results: { ref: string; cached: string }[] }).results;
+      expect((await search()).map((r) => r.cached)).toEqual(["none", "none"]);
+      expect(await status()).toBe("fresh");
+      await call("GET", "/api/admin/scrape/books?ref=qidian/2");
+      expect((await search()).find((r) => r.ref === "qidian/2")?.cached).toBe("fresh");
+      expect(requests.map((r) => new URL(r.url).pathname)).toEqual(["/api/v1/search", "/api/v1/books/qidian/2", "/api/v1/sources"]);
     });
 
     it("相同的搜索与详情命中缓存；写入时读取详情也命中缓存", async () => {

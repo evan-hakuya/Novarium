@@ -32,6 +32,8 @@
 
 缓存：搜索与作品响应按请求路径存在 `scrape_cache` 表。6 小时内（与 `x-cache-seconds` 一致）直接用缓存；过期后带 `If-None-Match` 重新验证，304 不扣点。请求出错时不写缓存。30 天没有使用的缓存由定时清理删除。浏览器内另有 30 分钟的查询缓存。
 
+点数提示（#117）：刮削对话框在搜索前用 `GET /api/admin/scrape/search/status?q=` 查这次搜索的缓存状态，搜索结果的每个候选带 `cached`（详情的缓存状态）。两者只查 `scrape_cache` 表，不请求 DaoSearch。状态 `fresh`（6 小时内，不扣点）、`stale`（已过期，内容没变时 304 不扣点）、`none`（扣点）。搜索词要完全一致（去掉首尾空白后）才算命中。
+
 `source` 取值：qidian、fanqie、jjwxc、faloo、qimao、zongheng、seventeenk、sfacg、ciweimao。
 
 ## Book 字段与用法

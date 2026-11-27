@@ -333,4 +333,19 @@ describe("DaoSearch 响应缓存", () => {
     expect(calls).toHaveLength(2);
     expect(mem.rows.size).toBe(0);
   });
+
+  it("缓存状态只查缓存，不发请求：没有缓存、未过期、已过期", async () => {
+    const mem = memoryCache();
+    const { calls, doFetch } = fakeFetch(withSources(() => json(200, { data: book })));
+    const source = createDaoSearchSource(KEY, doFetch, { cache: mem.cache, now: mem.now });
+    expect(await source.bookStatus(scraped.ref)).toBe("none");
+    expect(await source.bookStatus("not a ref")).toBe("none");
+    await source.getBook(scraped.ref);
+    const requests = calls.length;
+    expect(await source.bookStatus(scraped.ref)).toBe("fresh");
+    mem.advance(DAOSEARCH_CACHE_MS);
+    expect(await source.bookStatus(scraped.ref)).toBe("stale");
+    expect(calls).toHaveLength(requests);
+    expect(await createDaoSearchSource(KEY, doFetch).searchStatus("诡秘")).toBe("none");
+  });
 });

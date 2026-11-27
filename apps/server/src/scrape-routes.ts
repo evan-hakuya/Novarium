@@ -206,6 +206,7 @@ export function createScrapeRoutes() {
   });
 
   // 刮削对话框的候选列表。不绑定某本书，导入时刮削（#74）也用它。q 可以是书名、作者，或书页链接；author 用于把作者一致的候选排在前面。
+  // 每个候选带上详情的缓存状态（cached），对话框据此标出查看详情不消耗点数的候选。
   app.get("/scrape/search", async (c) => {
     const q = (c.req.query("q") ?? "").trim();
     const author = (c.req.query("author") ?? "").slice(0, MAX_AUTHOR_LENGTH);
@@ -213,10 +214,20 @@ export function createScrapeRoutes() {
     const source = await getScrapeSource(c.get("deps"));
     if (!source) return c.json({ error: "scrape_not_configured" }, 409);
     try {
-      return c.json({ results: rankByAuthor(await source.search(q), author) });
+      const results = rankByAuthor(await source.search(q), author);
+      return c.json({ results: await Promise.all(results.map(async (r) => ({ ...r, cached: await source.bookStatus(r.ref) }))) });
     } catch (error) {
       return scrapeErrorResponse(c, error);
     }
+  });
+
+  // 搜索前提示这次搜索是否消耗点数：只查本地缓存，不请求刮削源。
+  app.get("/scrape/search/status", async (c) => {
+    const q = (c.req.query("q") ?? "").trim();
+    if (!q || q.length > 200) return c.json({ error: "invalid_query" }, 400);
+    const source = await getScrapeSource(c.get("deps"));
+    if (!source) return c.json({ error: "scrape_not_configured" }, 409);
+    return c.json({ status: await source.searchStatus(q) });
   });
 
   // 所有者点击某个候选后才读取它的详情。

@@ -83,11 +83,20 @@ export interface ScrapeQuota {
   resetsAt: string | null;
 }
 
+/**
+ * 一次请求在本地缓存中的状态，用来提前告诉所有者是否消耗点数：
+ * fresh：缓存未过期，不发请求；stale：缓存已过期，内容没变时重新验证不消耗点数；none：没有缓存。
+ */
+export type CacheStatus = "fresh" | "stale" | "none";
+
 export interface ScrapeSource {
   readonly id: ScrapeSourceId;
   /** 按书名、作者或书页链接搜索，最佳匹配在前。 */
   search(query: string): Promise<ScrapeCandidate[]>;
   getBook(ref: string): Promise<ScrapedBook>;
+  /** 只查本地缓存，不请求刮削源。 */
+  searchStatus(query: string): Promise<CacheStatus>;
+  bookStatus(ref: string): Promise<CacheStatus>;
   /** 测试连接：确认密钥有效并返回当天用量，不消耗点数。 */
   check(): Promise<ScrapeQuota>;
 }

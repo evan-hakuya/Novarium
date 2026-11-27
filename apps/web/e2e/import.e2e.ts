@@ -230,3 +230,34 @@ test("a chapter number typo is fixed by rewriting the title number", async ({ pa
   await panel.getByRole("tab", { name: /^已修复/ }).click();
   await expect(panel.getByText("序号笔误：「第六章 选择」已改为第 7 章")).toBeVisible();
 });
+
+test("the scrape dialog tells which requests cost points", async ({ page }) => {
+  // 只拦截本应用的刮削接口：看起来已配置 DaoSearch；「归藏」的搜索已缓存，其他没有；第一个候选的详情已缓存。
+  await page.route("**/api/admin/settings/scrape", (route) =>
+    route.fulfill({ json: { configured: true, source: "daosearch", keyHint: "ds_t…abcd" } }),
+  );
+  await page.route("**/api/admin/scrape/search/status?*", (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q");
+    return route.fulfill({ json: { status: q === "归藏" ? "fresh" : "none" } });
+  });
+  const candidate = (ref: string, title: string, cached: string) => ({ ref, url: "", title, author: "无名氏", coverUrl: null, platform: "qidian", cached });
+  await page.route("**/api/admin/scrape/search?*", (route) =>
+    route.fulfill({ json: { results: [candidate("qidian/1", "归藏", "fresh"), candidate("qidian/2", "归藏外传", "none")] } }),
+  );
+  await login(page);
+  await page.goto("/import");
+  await page.locator("#file").setInputFiles({ name: "归藏.txt", mimeType: "text/plain", buffer: Buffer.from("第一章 开端\n　　正文。") });
+  await page.getByRole("button", { name: "刮削", exact: true }).click();
+
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("搜索关键词").fill("归藏");
+  await expect(dialog.getByText("本次搜索：已缓存，不消耗点数")).toBeVisible();
+  await dialog.getByLabel("搜索关键词").fill("别的书");
+  await expect(dialog.getByText("本次搜索：消耗 5 点")).toBeVisible();
+  await dialog.getByLabel("搜索关键词").fill("归藏");
+  await dialog.getByRole("button", { name: "搜索", exact: true }).click();
+  const other = dialog.getByRole("button").filter({ hasText: "归藏外传" });
+  await expect(other).toBeVisible();
+  await expect(dialog.getByRole("button").filter({ hasText: "归藏" }).filter({ hasNotText: "外传" })).toContainText("详情已缓存，不消耗点数");
+  await expect(other).not.toContainText("已缓存");
+});

@@ -1,8 +1,10 @@
-import { useState, type ReactNode } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BookDescription } from "@/api/books";
 import {
+  costText,
   fetchScrapedBook,
+  fetchSearchStatus,
   formatDate,
   formatFacet,
   formatReleased,
@@ -41,6 +43,9 @@ export interface ScrapeTarget extends BookDescription {
 /** 所有者在对比页确认后调用，写入勾选的字段。抛出的错误显示在对比页。 */
 export type ScrapeApply = (scraped: ScrapedBook, fields: ScrapeField[]) => Promise<void>;
 
+/** DaoSearch 的点数：搜索 5 点，查看一部作品的详情 1 点（docs/agents/daosearch.md）。 */
+const SEARCH_POINTS = 5;
+
 interface FlowProps {
   target: ScrapeTarget;
   onApply: ScrapeApply;
@@ -70,6 +75,7 @@ function ScrapeFlow({ target, onApply, onDone }: FlowProps) {
   const [query, setQuery] = useState(target.title);
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [picked, setPicked] = useState<ScrapeCandidate | null>(null);
+  const queryClient = useQueryClient();
   const search = useQuery({
     queryKey: scrapeSearchQueryKey(submitted ?? "", target.author.trim()),
     queryFn: () => searchScrape(submitted!, target.author.trim()),
@@ -78,6 +84,23 @@ function ScrapeFlow({ target, onApply, onDone }: FlowProps) {
     gcTime: SCRAPE_STALE_MS,
     retry: false,
   });
+  // 输入停顿 0.3 秒后查这次搜索是否消耗点数。浏览器已缓存的搜索不发请求，也不消耗点数。
+  const [pending, setPending] = useState(query.trim());
+  useEffect(() => {
+    const timer = setTimeout(() => setPending(query.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+  const inBrowser = !!queryClient.getQueryData(scrapeSearchQueryKey(pending, target.author.trim()));
+  const searchStatus = useQuery({
+    queryKey: ["scrape", "searchStatus", pending],
+    queryFn: () => fetchSearchStatus(pending),
+    enabled: !!pending && !inBrowser,
+    staleTime: 0,
+    retry: false,
+  });
+  const searchCost = inBrowser ? "fresh" : searchStatus.data;
+  /** 候选详情的缓存状态：浏览器已读过的详情不再请求。 */
+  const detailCost = (c: ScrapeCandidate) => (queryClient.getQueryData(scrapeBookQueryKey(c.ref)) ? "fresh" : c.cached);
 
   if (rescrape && target.scrapeRef) {
     const saved: ScrapeCandidate = {
@@ -126,6 +149,7 @@ function ScrapeFlow({ target, onApply, onDone }: FlowProps) {
           {searching ? "搜索中…" : "搜索"}
         </Button>
       </form>
+      {pending === query.trim() && searchCost && <p className="-mt-2 text-xs text-muted-foreground">本次搜索：{costText(searchCost, SEARCH_POINTS)}</p>}
       {search.isError && <p className="text-sm text-destructive">{scrapeFailureReason(search.error)}</p>}
       {search.data?.length === 0 && <p className="text-sm text-muted-foreground">没有找到结果。换个关键词，或粘贴书页链接试试。</p>}
       {search.data && search.data.length > 0 && (
@@ -146,6 +170,11 @@ function ScrapeFlow({ target, onApply, onDone }: FlowProps) {
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {platformName(result.platform)}
+                    {detailCost(result) && detailCost(result) !== "none" && (
+                      <Badge variant="outline" className="ml-2">
+                        详情{costText(detailCost(result)!, 1)}
+                      </Badge>
+                    )}
                   </span>
                 </div>
               </button>
