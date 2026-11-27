@@ -117,7 +117,7 @@ export function candidateLines(
     if (!id) return;
     const text = line.trim();
     const rule = ruleKinds.get(i) ?? "body";
-    if (rule === "body" && !looksLikeTitle(text) && !leads.has(i)) return;
+    if (rule === "body" && (isPostscript(text) || (!looksLikeTitle(text) && !leads.has(i)))) return;
     let k = i + 1;
     while (k < lines.length && !lines[k]!.trim()) k++;
     candidates.push({
@@ -181,11 +181,14 @@ function looksLikeTitle(text: string): boolean {
 
 const isShortLine = (text: string) => [...text].length <= SHORT_LINE_CHARS && titleShaped(text);
 
-/** 标题行 t 前面最近的非空行，是不超过 20 字、形状像标题的短行时返回它的下标，否则返回 null。 */
+/** 章末附言：以 PS、P.S.、PPS 开头（可带编号，如 PS2），后跟冒号。它属于本章正文，不是标题或作者公告。 */
+const isPostscript = (text: string) => /^p{1,2}\.?\s*s\.?\s*\d*\s*[:：]/i.test(text);
+
+/** 标题行 t 前面最近的非空行，是不超过 20 字、形状像标题的短行（附言除外）时返回它的下标，否则返回 null。 */
 export function leadLine(lines: readonly string[], t: number): number | null {
   let j = t - 1;
   while (j >= 0 && !lines[j]!.trim()) j--;
-  return j >= 0 && isShortLine(lines[j]!.trim()) ? j : null;
+  return j >= 0 && isShortLine(lines[j]!.trim()) && !isPostscript(lines[j]!.trim()) ? j : null;
 }
 
 /** 清洗时保持单独成行的词：请假条用词与标题用词。「第」「卷」在折行正文的片段里太常见，不在其中。 */

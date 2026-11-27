@@ -142,6 +142,16 @@ describe("候选行", () => {
     expect(findCandidateLines("第一章 开端\n　　“抱歉，停更通知”\n", DEFAULT_PROCESS_OPTIONS).map((c) => c.text)).toEqual(["第一章 开端"]);
   });
 
+  it("章末附言（PS：）不是候选行，也不是序号重置前的卷名；只看行首格式", () => {
+    const texts = (body: string[]) => findCandidateLines(["第一章 开端", ...body].join("\n"), { chapterPattern: null }).map((c) => c.text);
+    const postscripts = ["PS：第二更求推荐票", "ps:第三更", "P.S.：第一卷完", "PPS：请假一天", "PS2：第二更"];
+    expect(texts(postscripts)).toEqual(["第一章 开端"]);
+    // 「PSV」不是附言，含「第」的短行照常是候选行。
+    expect(texts(["PSV：第二部"])).toEqual(["第一章 开端", "PSV：第二部"]);
+    const book = ["第一章 开端", "　　正文。", "第二章 继续", "　　正文。", "", "PS：第一卷完", "", "第一章 新篇", "　　正文。"].join("\n");
+    expect(splitChapters(book, { chapterPattern: null }).every((c) => !c.volume)).toBe(true);
+  });
+
   it("整理时没有结尾标点的番外短标题不与下一行正文合并，成为可疑的候选行", async () => {
     const manuscript = "第一章 开端\n他推开门。\n\n个人番外篇 : 与你相配\n\n　　伦敦的音乐厅座无虚席。\n";
     const book = await processManuscript(utf8(manuscript), { ...DEFAULT_PROCESS_OPTIONS });
