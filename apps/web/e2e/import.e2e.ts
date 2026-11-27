@@ -3,6 +3,8 @@ import { OWNER_PASSWORD } from "./env.ts";
 import { manuscript } from "./manuscript.ts";
 
 const CHAPTERS = 1200;
+/** 原稿中的作者公告章节数（见 manuscript.ts）。 */
+const NOTICES = 1;
 const EXTRAS = 3;
 /** 原稿中跳过的章节序号，用来检查异常面板。 */
 const MISSING = 50;
@@ -21,7 +23,11 @@ test("imports a large manuscript", async ({ page }) => {
     mimeType: "text/plain",
     buffer: Buffer.from(manuscript(CHAPTERS, EXTRAS, MISSING)),
   });
-  await expect(page.getByText(`${CHAPTERS} 章 · 整理后`)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(`${CHAPTERS + NOTICES} 章 · 整理后`)).toBeVisible({ timeout: 60_000 });
+
+  await test.step("author notices are tagged chapters", async () => {
+    await expect(page.getByRole("button", { name: "上架感言 作者公告", exact: true })).toBeVisible();
+  });
 
   await test.step("no scrape button without a DaoSearch key", async () => {
     await expect(page.getByRole("button", { name: "刮削", exact: true })).toHaveCount(0);
@@ -33,7 +39,7 @@ test("imports a large manuscript", async ({ page }) => {
     await page.locator("#chapter-pattern").fill("^个人番外");
     const started = Date.now();
     await page.getByRole("button", { name: "应用" }).click();
-    await expect(page.getByText(`${CHAPTERS + EXTRAS} 章 · 整理后`)).toBeVisible({ timeout: PATTERN_BUDGET_MS });
+    await expect(page.getByText(`${CHAPTERS + NOTICES + EXTRAS} 章 · 整理后`)).toBeVisible({ timeout: PATTERN_BUDGET_MS });
     test.info().annotations.push({ type: "pattern-ms", description: String(Date.now() - started) });
   });
 

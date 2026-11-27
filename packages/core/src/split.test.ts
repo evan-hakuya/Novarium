@@ -210,4 +210,9 @@ describe("splitChapters", () => {
       ["完本感言", null, "第二部 无面人"],
     ]);
   });
+
+  it("像公告的正文句仍是正文", () => {
+    const text = ["第一章 甲", "第一部总结起来，就是一个字：惨。", "第一卷总结了他的一生，他很满意。", "他发表了获奖感言"].join("\n");
+    expect(splitChapters(text, builtin).map((c) => c.title)).toEqual(["第一章 甲"]);
+  });
 });
