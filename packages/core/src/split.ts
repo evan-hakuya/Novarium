@@ -1,7 +1,16 @@
 import { extractChapterOrder } from "./vendor/novel-processor/novel";
 import { CHAPTER_TITLE_MAX_LEN, detectChapterUnit, isChapterTitleLine, isNoticeTitle } from "./vendor/novel-processor/regex";
 import { applyNumberFixes, findNumberAnomalies, renumberTitle } from "./numbering";
-import { candidateLines, leadLine, lineIds, lineOverrideMap, markSuspicious, type CandidateLine, type TitleKind } from "./line-review";
+import {
+  candidateLines,
+  leadLine,
+  lineIds,
+  lineOverrideMap,
+  LONG_CHAPTER_FACTOR,
+  markSuspicious,
+  type CandidateLine,
+  type TitleKind,
+} from "./line-review";
 import type { ChapterDraft } from "./types";
 
 export type { ChapterDraft };
@@ -182,8 +191,18 @@ export function findCandidateLines(text: string, options: SplitOptions): Candida
   const lines = text.split("\n");
   const kinds = ruleTitleLines(lines, options);
   const firstChapters = [...kinds].filter(([i, kind]) => kind === "chapter" && extractChapterOrder(lines[i]!.trim()) === 1).map(([i]) => i);
-  const candidates = candidateLines(lines, kinds, firstChapters);
   const chapters = splitChapters(text, options);
+  const bytes = encoder.encode(text);
+  const decoder = new TextDecoder();
+  const charsOf = (c: ChapterDraft) => decoder.decode(bytes.subarray(c.byteOffset, c.byteOffset + c.byteLength)).replace(/\s/g, "").length;
+  // 超长章节只按规则分章判断（不含行级修正），候选行不随 AI 修正变化。
+  const ruleChapters = options.lineOverrides?.length ? splitChapters(text, { ...options, lineOverrides: [] }) : chapters;
+  const ruleChars = ruleChapters.map(charsOf);
+  const median = [...ruleChars].sort((a, b) => a - b)[Math.floor(ruleChars.length / 2)] ?? 0;
+  const longRanges = ruleChapters
+    .filter((_, i) => ruleChars[i]! > LONG_CHAPTER_FACTOR * median)
+    .map((c) => [c.byteOffset, c.byteOffset + c.byteLength] as const);
+  const candidates = candidateLines(lines, kinds, firstChapters, longRanges);
   // 涉及序号异常的章节：乱序、重复编号，以及缺号前后的两章。分卷边界系统已自动处理，不算。
   const anomalous = new Set<number>();
   for (const a of findNumberAnomalies(chapters)) {
@@ -192,14 +211,12 @@ export function findCandidateLines(text: string, options: SplitOptions): Candida
     else if (a.kind === "outOfOrder") anomalous.add(a.order);
     else if (a.kind === "numberTypo") anomalous.add(a.previous).add(a.order);
   }
-  const bytes = encoder.encode(text);
-  const decoder = new TextDecoder();
   return markSuspicious(
     candidates,
     chapters.map((c) => ({
       title: c.title,
       byteOffset: c.byteOffset,
-      chars: decoder.decode(bytes.subarray(c.byteOffset, c.byteOffset + c.byteLength)).replace(/\s/g, "").length,
+      chars: charsOf(c),
       numberAnomaly: anomalous.has(c.order),
     })),
   );
