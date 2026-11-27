@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { isNoticeTitle } from "@novarium/core";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -120,6 +121,7 @@ export function ChapterBrowser({
                 {c.title}
               </span>
               {c.byteLength === 0 && <span className="shrink-0 text-xs text-muted-foreground">空</span>}
+              {isNoticeTitle(c.title) && <span className="shrink-0 text-xs text-muted-foreground">作者公告</span>}
             </button>
           </li>
         ))}

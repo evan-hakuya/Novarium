@@ -68,6 +68,17 @@ const innerCommaRegex = /[，,]/;
 // 电影，票价三十起步。"、编号清单体）照旧按正文句处理。
 const sectionLabelRegex = /^(?:序章|楔子|正文|终章|末章|后记|後记|尾声|番外|引子|[序前]言|卷首语|扉页|跋)/u;
 
+// 作者公告标题：「第一部总结兼请假（求月票）」「上架感言」「完本感言」。
+// 它们单独成章，但不是正文章节，不带序号（见 extractChapterOrder），也不开始分卷。
+const noticeTitleRegex =
+  /^(?:第\s*[〇零一二三四五六七八九十百千万两壹贰叁肆伍陆柒捌玖拾佰仟萬\d]{1,10}\s*[部卷]\s*(?:总结|感言)|[^\s，,。！？!?“”"「」]{0,8}感言(?:[（(][^）)]*[）)])?$)/;
+
+/** 这一行是不是作者公告的标题。 */
+export const isNoticeTitle = (line: string): boolean => {
+  const t = line.trim();
+  return [...t].length <= CHAPTER_TITLE_MAX_LEN && noticeTitleRegex.test(t);
+};
+
 /**
  * 这本书的章节单位用的是哪个标记（章/节/卷/集/幕/回/部/篇）。
  *
@@ -116,6 +127,7 @@ export const isChapterTitleLine = (line: string, unit?: string | null): boolean 
   // 「第三章节」是正文中的复合词，不是「第三章」标题后接正文。
   if (/^第?\s*[〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟\d]+\s*章节/.test(t)) return false;
   if ([...t].length > CHAPTER_TITLE_MAX_LEN) return false;
+  if (noticeTitleRegex.test(t)) return true;
   if (!chapterTitleRegex.test(t) && !numberTitleRegex.test(t)) return false;
   const head = t.match(chapterHeadRegex);
   // 裸「一部……」这类句子不能因为数字与章节单位相邻而成为标题。
@@ -125,6 +137,15 @@ export const isChapterTitleLine = (line: string, unit?: string | null): boolean 
   // 有显式前缀但标记不是「章」(部/节/集/卷/回…) 且 句号收尾 + 内含逗号 ——
   // 「第二部《办公室风情》的票房表现，…更好。」「第1节比赛接近尾声，…」这类
   // 正文句。「第61章 方圆有事想求。」这类章标记的标题不受影响。
-  if (head && head[1] !== "章" && sentenceEndRegex.test(t) && innerCommaRegex.test(t.slice(0, -1)) && head[1] !== unit) return false;
+  // 已知章节单位时，标记不是单位、以句号或冒号收尾的行不需要逗号也是正文句：
+  // 「第一幕依旧是那个狭小……伊恩.赖特。」「第二部，我还没想好主角和切入，…：」。
+  if (
+    head &&
+    head[1] !== "章" &&
+    head[1] !== unit &&
+    /[。.：:]$/.test(t) &&
+    (unit || (sentenceEndRegex.test(t) && innerCommaRegex.test(t.slice(0, -1))))
+  )
+    return false;
   return true;
 };

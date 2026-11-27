@@ -19,5 +19,7 @@ export function guessBookName(fileName: string, head = ""): { title: string; aut
   const title = quoted ?? base.replace(/作者[:：].*$/, "").trim();
   // 只看开头几行，避免把正文里的「作者：」当成作者。
   const author = byLabel(base) || byLabel(head.split("\n").slice(0, 20).join("\n"));
-  return { title: title || base, author };
+  // 「书名 (作者)」：括号里正是识别出的作者时，它不属于书名。
+  const bare = author ? title.replace(/\s*[(（]([^()（）]+)[)）]$/, (m, inner: string) => (inner.trim() === author ? "" : m)) : title;
+  return { title: bare || title || base, author };
 }
