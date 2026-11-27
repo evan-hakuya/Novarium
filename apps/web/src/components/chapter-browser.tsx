@@ -44,23 +44,34 @@ export function ChapterBrowser({
   const selected = controlled ?? own;
   const select = onSelect ?? setOwn;
   const current = chapters[selected];
-  // 每章所属卷的第一章下标；没有卷时为 null。卷名可能重复，用第一章下标区分卷。
-  const groups = useMemo(() => {
+  // groups：每章所属卷的第一章下标，没有卷时为 null（卷名可能重复，用第一章下标区分卷）。volumes：每卷的章数与是否含异常章节。
+  const { groups, volumes } = useMemo(() => {
     const starts: (number | null)[] = [];
+    const info = new Map<number, { count: number; flagged: boolean }>();
     chapters.forEach((c, i) => {
-      starts.push(!c.volume ? null : c.volume === chapters[i - 1]?.volume ? starts[i - 1]! : i);
+      const g = !c.volume ? null : c.volume === chapters[i - 1]?.volume ? starts[i - 1]! : i;
+      starts.push(g);
+      if (g === null) return;
+      const v = info.get(g) ?? { count: 0, flagged: false };
+      info.set(g, { count: v.count + 1, flagged: v.flagged || !!flagged?.has(c.order) });
     });
-    return starts;
-  }, [chapters]);
+    return { groups: starts, volumes: info };
+  }, [chapters, flagged]);
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
+  // 重新整理后卷的划分可能变了，全部重新展开。
+  const [shownChapters, setShownChapters] = useState(chapters);
+  if (shownChapters !== chapters) {
+    setShownChapters(chapters);
+    setCollapsed(new Set());
+  }
   // 换章或外部跳转时展开当前章所在的卷。在渲染中更新，使下面的 effect 滚动列表时这一章已经显示。
   const [opened, setOpened] = useState(`${selected}:${revealKey}`);
   if (opened !== `${selected}:${revealKey}`) {
     setOpened(`${selected}:${revealKey}`);
     const g = groups[selected];
-    if (g != null && collapsed.has(g)) setCollapsed(new Set([...collapsed].filter((s) => s !== g)));
+    if (g != null && collapsed.has(g)) setCollapsed(without(collapsed, g));
   }
-  const toggle = (g: number) => setCollapsed((prev) => (prev.has(g) ? new Set([...prev].filter((s) => s !== g)) : new Set(prev).add(g)));
+  const toggle = (g: number) => setCollapsed((prev) => (prev.has(g) ? without(prev, g) : new Set(prev).add(g)));
   const listRef = useRef<HTMLOListElement>(null);
   const articleRef = useRef<HTMLElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -126,8 +137,8 @@ export function ChapterBrowser({
             {groups[i] === i && (
               <VolumeRow
                 title={c.volume!}
-                count={groups.filter((g) => g === i).length}
-                flagged={!!flagged && chapters.some((d, k) => groups[k] === i && flagged.has(d.order))}
+                count={volumes.get(i)!.count}
+                flagged={volumes.get(i)!.flagged}
                 open={!collapsed.has(i)}
                 onToggle={() => toggle(i)}
               />
@@ -148,7 +159,7 @@ export function ChapterBrowser({
                 )}
               >
                 <span className="truncate">
-                  {flagged?.has(c.order) && <span aria-label="序号异常">⚠ </span>}
+                  {flagged?.has(c.order) && <WarningMark label="序号异常" />}
                   {c.title}
                 </span>
                 {c.byteLength === 0 && <span className="shrink-0 text-xs text-muted-foreground">空</span>}
@@ -180,6 +191,16 @@ export function ChapterBrowser({
   );
 }
 
+const without = (set: ReadonlySet<number>, value: number) => new Set([...set].filter((s) => s !== value));
+
+/** 异常提示：屏幕上显示 ⚠，读屏软件读出 label。 */
+const WarningMark = ({ label }: { label: string }) => (
+  <>
+    <span aria-hidden>⚠ </span>
+    <span className="sr-only">{label}</span>
+  </>
+);
+
 /** 章节列表中的卷名行：点击展开或收起这一卷的章节。收起时如果卷内有异常章节，仍显示提示。 */
 function VolumeRow({ title, count, flagged, open, onToggle }: { title: string; count: number; flagged: boolean; open: boolean; onToggle: () => void }) {
   return (
@@ -195,7 +216,7 @@ function VolumeRow({ title, count, flagged, open, onToggle }: { title: string; c
       >
         <ChevronRightIcon aria-hidden className={cn("size-4 shrink-0 transition-transform", open && "rotate-90")} />
         <span className="truncate">
-          {flagged && !open && <span aria-label="含序号异常">⚠ </span>}
+          {flagged && !open && <WarningMark label="含序号异常" />}
           {title}
         </span>
         <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">{count} 章</span>
