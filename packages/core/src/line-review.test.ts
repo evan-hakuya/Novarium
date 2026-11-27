@@ -89,7 +89,7 @@ describe("候选行", () => {
     ]);
   });
 
-  it("第 1 章（含序号重置）前的独立短行是可疑的候选行，规则仍判为正文；超过 20 字或以句号结尾的不算", () => {
+  it("序号重置的第 1 章前用空行隔开的独立短行，规则判为卷名，仍是可疑的候选行；超过 20 字或以句号结尾的不算", () => {
     const book = [
       "第一章 开端", "　　正文。",
       "第二章 继续", "　　正文。",
@@ -100,9 +100,32 @@ describe("候选行", () => {
       "　　这一行没有结尾标点但是已经超过了二十个字的长度上限",
       "第一章 再一卷", "　　正文。",
     ].join("\n");
-    const marked = findCandidateLines(book, { chapterPattern: null }).filter((c) => c.rule === "body");
-    expect(marked.map((c) => [c.text, c.suspicious])).toEqual([["小丑", true]]);
-    expect(splitChapters(book, { chapterPattern: null }).map((c) => c.title)).not.toContain("小丑");
+    const marked = findCandidateLines(book, { chapterPattern: null }).filter((c) => c.rule !== "chapter");
+    expect(marked.map((c) => [c.text, c.rule, c.suspicious])).toEqual([["小丑", "volume", true]]);
+    const chapters = splitChapters(book, { chapterPattern: null });
+    expect(chapters.map((c) => c.title)).not.toContain("小丑");
+    expect(chapters.find((c) => c.title === "第一章 新卷")?.volume).toBe("小丑");
+  });
+
+  it("有序号重置的卷名时，全书第一个第 1 章前的短行也是卷名；没有时它只是正文候选行", () => {
+    const opening = ["前文。", "", "风起", "", "第一章 开端", "　　正文。", "第二章 继续", "　　正文。"];
+    const volumes = (lines: string[]) => [...new Set(splitChapters(lines.join("\n"), { chapterPattern: null }).map((c) => c.volume))];
+    expect(volumes([...opening, "", "云涌", "", "第一章 新篇", "　　正文。"])).toEqual([null, "风起", "云涌"]);
+    expect(volumes(opening)).toEqual([null]);
+    // 只用本书正则时不识别卷。
+    const replace = { chapterPattern: "^第.章", chapterPatternMode: "replace" as const };
+    expect(splitChapters([...opening, "", "云涌", "", "第一章 新篇", "　　正文。"].join("\n"), replace).every((c) => !c.volume)).toBe(true);
+  });
+
+  it("序号重置前的短行不是卷名：超过 20 字、以句号结尾、上下没有空行，或已有卷标题时", () => {
+    const volumes = (lead: string[]) =>
+      [...new Set(splitChapters(["第一章 开端", "　　正文。", "第二章 继续", "　　正文。", ...lead, "第一章 新篇", "　　正文。"].join("\n"), { chapterPattern: null }).map((c) => c.volume))];
+    expect(volumes(["", "这一行没有结尾标点但是已经超过了二十个字的长度上限", ""])).toEqual([null]);
+    expect(volumes(["", "他走了。", ""])).toEqual([null]);
+    expect(volumes(["", "风起"])).toEqual([null]);
+    expect(volumes(["　　正文。", "风起", ""])).toEqual([null]);
+    // 卷标题与第一章之间的短行（如卷的副标题）不改卷名。
+    expect(volumes(["", "第二卷 云涌", "", "风起", ""])).toEqual([null, "第二卷 云涌"]);
   });
 
   it("整理时疑似作者公告的独立短行不与下一行正文合并，成为可疑的候选行；对话与含常见词的折行正文照常合并", async () => {

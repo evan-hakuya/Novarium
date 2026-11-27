@@ -1,7 +1,7 @@
 import { extractChapterOrder } from "./vendor/novel-processor/novel";
 import { CHAPTER_TITLE_MAX_LEN, detectChapterUnit, isChapterTitleLine, isNoticeTitle } from "./vendor/novel-processor/regex";
 import { applyNumberFixes, findNumberAnomalies } from "./numbering";
-import { candidateLines, lineIds, lineOverrideMap, markSuspicious, type CandidateLine, type TitleKind } from "./line-review";
+import { candidateLines, leadLine, lineIds, lineOverrideMap, markSuspicious, type CandidateLine, type TitleKind } from "./line-review";
 import type { ChapterDraft } from "./types";
 
 export type { ChapterDraft };
@@ -143,7 +143,38 @@ function ruleTitleLines(lines: string[], options: SplitOptions): Map<number, Tit
     if (isVolume(line)) kinds.set(i, "volume");
     else if (isTitle(line)) kinds.set(i, isNoticeTitle(line) ? "notice" : "chapter");
   });
+  if (options.chapterPatternMode !== "replace" || !options.chapterPattern) markLeadVolumes(lines, kinds);
   return kinds;
+}
+
+/**
+ * 没有卷标题、靠序号重置分卷的书：重置的第 1 章（前一个有序号的章节序号大于 1）前面，
+ * 用空行隔开的独立短行是卷名。至少有一处这样的卷名时，全书第一个第 1 章前的短行也是卷名。
+ * 它们仍是候选行，AI 复核可以纠正（ADR 0007）。
+ */
+function markLeadVolumes(lines: string[], kinds: Map<number, TitleKind>): void {
+  const lead = (t: number) => {
+    const j = leadLine(lines, t);
+    // 上下都是空行（或在全书开头），且规则没有判为标题。
+    return j !== null && j < t - 1 && (j === 0 || !lines[j - 1]!.trim()) && !kinds.has(j) ? j : null;
+  };
+  let first: number | null = null;
+  let previous: number | null = null;
+  const found: number[] = [];
+  for (const [i, kind] of [...kinds].sort((a, b) => a[0] - b[0])) {
+    // 卷标题已经说明了分卷，它后面的重置不再从短行找卷名。
+    if (kind === "volume") previous = null;
+    const number = kind === "chapter" ? extractChapterOrder(lines[i]!.trim()) : null;
+    if (number === null) continue;
+    if (number === 1 && first === null) first = i;
+    else if (number === 1 && previous !== null && previous > 1) {
+      const j = lead(i);
+      if (j !== null) found.push(j);
+    }
+    previous = number;
+  }
+  const opening = found.length > 0 && first !== null ? lead(first) : null;
+  for (const j of opening === null ? found : [opening, ...found]) kinds.set(j, "volume");
 }
 
 /** 整理后正文中交给 AI 复核的候选行（GLOSSARY「候选行」），并标出其中可疑的行。 */
