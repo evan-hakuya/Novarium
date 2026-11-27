@@ -28,6 +28,10 @@ DaoSearch is the first scraping source (ADR 0006). Endpoints, costs, fields and 
 
 AI review uses Workers AI `clef` and `clairic` (ADR 0007). Request formats, prices, quota and test results are in `docs/agents/workers-ai.md`.
 
+### Import samples
+
+Before and after changing a chapter rule, run the sample eval and compare with its baseline. See `docs/agents/import-samples.md`.
+
 ## Workflow
 
 Every change goes branch → Conventional Commit → PR → review → squash merge → deploy; `main` only receives squash merges, which keeps its commits Verified. A review subagent checks each PR against `CODING_STANDARDS.md`; the agent then merges and deploys its own PRs. Follow the steps in `docs/agents/workflow.md` for any code or doc change.

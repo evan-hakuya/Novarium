@@ -12,7 +12,8 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval": "vitest run --config eval/vitest.config.ts"
   },
   "dependencies": {
     "jschardet": "^4.1.0"
