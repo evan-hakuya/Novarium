@@ -36,7 +36,7 @@ async function evaluate(bytes: Uint8Array): Promise<Result> {
     duplicate: count("duplicate"),
     sectionReset: count("sectionReset"),
     suspicious: findCandidateLines(text, DEFAULT_PROCESS_OPTIONS).filter((c) => c.suspicious).length,
-    titles: chapters.map((c) => `${c.notice ? "公告 " : ""}${c.title} | ${c.number ?? "-"} | ${c.volume ?? "-"}`),
+    titles: chapters.map((c) => `${c.notice ? "作者公告 " : ""}${c.title} | ${c.number ?? "-"} | ${c.volume ?? "-"}`),
   };
 }
 
@@ -58,24 +58,32 @@ test("diffTitles 按出现次数比较", () => {
   expect(diffTitles(["a", "a", "b"], ["a", "c"])).toEqual(["- a", "- b", "+ c"]);
 });
 
-test.skipIf(!DIR)("samples", async () => {
+test.skipIf(!DIR || !existsSync(DIR))("samples", async () => {
   const files = readdirSync(DIR!).filter((f) => f.endsWith(".txt")).sort();
   expect(files.length).toBeGreaterThan(0);
   const baseline: Record<string, Result> = existsSync(BASELINE!) ? JSON.parse(readFileSync(BASELINE!, "utf8")) : {};
   const current: Record<string, Result> = {};
   const rows: string[] = [];
   let changed = 0;
+  let keys: string[] = [];
   for (const file of files) {
     const r = (current[file] = await evaluate(new Uint8Array(readFileSync(join(DIR!, file)))));
     const b = baseline[file];
     const { titles, ...counts } = r;
-    const cell = (k: keyof typeof counts) => (b && b[k] !== r[k] ? `${b[k]}→${r[k]}` : String(r[k]));
-    rows.push([file.slice(0, 16), ...(Object.keys(counts) as (keyof typeof counts)[]).map(cell)].join("\t"));
+    const countKeys = Object.keys(counts) as (keyof typeof counts)[];
+    keys = countKeys;
+    const moved = (k: keyof typeof counts) => !!b && b[k] !== r[k];
+    rows.push([file, ...countKeys.map((k) => (moved(k) ? `${b![k]}→${r[k]}` : String(r[k])))].join("\t"));
     const diff = b ? diffTitles(b.titles, titles) : [];
-    if (!b || diff.length) changed++;
+    if (!b || diff.length || countKeys.some(moved)) changed++;
     if (diff.length) rows.push(...diff.slice(0, MAX_DIFF).map((d) => `    ${d}`), ...(diff.length > MAX_DIFF ? [`    …共 ${diff.length} 条`] : []));
   }
-  const header = ["file", "chapters", "notices", "volumes", "outOfOrder", "missing", "duplicate", "sectionReset", "suspicious"].join("\t");
+  // 基线里有、样本目录里已经没有的书。
+  for (const file of Object.keys(baseline).filter((f) => !files.includes(f))) {
+    rows.push(`- ${file}（已不在样本目录中）`);
+    changed++;
+  }
+  const header = ["file", ...keys].join("\t");
   console.log([header, ...rows, `${changed} 本与基线不同${existsSync(BASELINE!) ? "" : "（还没有基线）"}`].join("\n"));
   if (process.env.UPDATE_BASELINE) writeFileSync(BASELINE!, JSON.stringify(current, null, 1));
 });

@@ -3,7 +3,7 @@
 Real novels used to check chapter rules (`packages/core/src/split.ts`, `packages/core/src/vendor/novel-processor/regex.ts`, `packages/core/src/line-review.ts`). They are copyrighted: they stay on the owner's machine and never enter the repo, a PR, an issue or a log.
 
 - **Folder**: `/Users/hakuya/Downloads/Documents/小说样本` (10 books in UTF-8, UTF-8 with BOM and GBK, some with CRLF line ends).
-- **Baseline**: `baseline.json` in the same folder: per book, the counts below and every chapter as `标题 | 序号 | 卷`, with author notices prefixed `公告 `.
+- **Baseline**: `baseline.json` in the same folder: per book, the counts below and every chapter as `标题 | 序号 | 卷`, with author notices prefixed `作者公告 `.
 
 ## Run
 
@@ -11,7 +11,7 @@ Real novels used to check chapter rules (`packages/core/src/split.ts`, `packages
 NOVARIUM_SAMPLES=/Users/hakuya/Downloads/Documents/小说样本 pnpm --filter @novarium/core eval
 ```
 
-It processes every `.txt` with the default options in about 10 seconds, prints one row per book (chapters, notices, volumes, outOfOrder, missing, duplicate, sectionReset, suspicious) and marks changed counts `旧→新`. Under each changed book it lists chapters that disappeared (`-`) or appeared (`+`), up to 30 lines. Without `NOVARIUM_SAMPLES` the sample test is skipped.
+It processes every `.txt` with the default options in about 10 seconds, prints one row per book (chapters, notices, volumes, outOfOrder, missing, duplicate, sectionReset, suspicious) and marks changed counts `旧→新`. Under each changed book it lists chapters that disappeared (`-`) or appeared (`+`), up to 30 lines; books missing from the folder are listed too. The last line counts books whose counts or titles differ. When `NOVARIUM_SAMPLES` is unset or the folder does not exist, the sample test is skipped.
 
 Add `UPDATE_BASELINE=1` to write the current result as the new baseline.
 
