@@ -88,6 +88,36 @@ describe("候选行", () => {
       ["番外 后日谈", true],
     ]);
   });
+
+  it("第 1 章（含序号重置）前的独立短行是可疑的候选行，规则仍判为正文；超过 20 字或以句号结尾的不算", () => {
+    const book = [
+      "第一章 开端", "　　正文。",
+      "第二章 继续", "　　正文。",
+      "", "小丑", "",
+      "第一章 新卷", "　　正文。",
+      "　　这一行以句号结尾，所以不是卷名。",
+      "第一章 又一卷", "　　正文。",
+      "　　这一行没有结尾标点但是已经超过了二十个字的长度上限",
+      "第一章 再一卷", "　　正文。",
+    ].join("\n");
+    const marked = findCandidateLines(book, { chapterPattern: null }).filter((c) => c.rule === "body");
+    expect(marked.map((c) => [c.text, c.suspicious])).toEqual([["小丑", true]]);
+    expect(splitChapters(book, { chapterPattern: null }).map((c) => c.title)).not.toContain("小丑");
+  });
+
+  it("整理时疑似作者公告的独立短行不与下一行正文合并，成为可疑的候选行；对话与含常见词的折行正文照常合并", async () => {
+    const manuscript = "第一章 开端\n他推开门。\n生病了，请假一天\n明天补更。\n“可以请假\n吗？”他问。\n这说明他没有收到通知\n，只好先回家。\n";
+    const book = await processManuscript(utf8(manuscript), { ...DEFAULT_PROCESS_OPTIONS });
+    expect(book.chapters.map((c) => c.title)).toEqual(["第一章 开端"]);
+    const lines = book.text.split("\n").map((l) => l.trim()).filter(Boolean);
+    expect(lines).toContain("生病了，请假一天");
+    expect(lines).toContain("“可以请假吗？”他问。");
+    expect(lines).toContain("这说明他没有收到通知，只好先回家。");
+    const leave = findCandidateLines(book.text, DEFAULT_PROCESS_OPTIONS).find((c) => c.text === "生病了，请假一天");
+    expect(leave).toMatchObject({ rule: "body", suspicious: true });
+    // 含新增公告用词的对话不是候选行。
+    expect(findCandidateLines("第一章 开端\n　　“抱歉，停更通知”\n", DEFAULT_PROCESS_OPTIONS).map((c) => c.text)).toEqual(["第一章 开端"]);
+  });
 });
 
 describe("分章应用行级修正", () => {

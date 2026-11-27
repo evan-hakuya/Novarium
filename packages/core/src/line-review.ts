@@ -1,5 +1,7 @@
 // AI 复核（ADR 0007）用到的行：候选行的识别与行级修正的记法。只看整理后的正文，不调用 AI。
 
+import { LEAVE_WORDS, NOTICE_WORDS } from "./notice-words";
+
 /** 一行的类别。notice 是作者公告的标题：单独成章，不带序号（GLOSSARY「作者公告」）。 */
 export type LineKind = "chapter" | "volume" | "notice" | "body";
 /** 标题行的类别。 */
@@ -79,19 +81,32 @@ export interface CandidateLine {
 }
 
 /** 规则判为正文、但像标题的短行：含这些词之一。 */
-const NEAR_MISS_WORDS = /第|番外|卷|请假|感言|公告|上架|完本|完结|后记|尾声|楔子|序章|终章|单章|说明/;
+const NEAR_MISS_WORDS = new RegExp(`第|番外|卷|完结|后记|尾声|楔子|序章|终章|${NOTICE_WORDS.source}`);
 /** 规则判为章节、且有「第 N 章/回/节」编号的行：规则基本不会错，排在后面。 */
 const NUMBERED_TITLE = /^第\s*[〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟\d]+\s*[章回节]/;
 const MAX_TITLE_CHARS = 40;
+/** 单独成行的短行：疑似作者公告与卷名的长度上限。正文折行的片段通常更长。 */
+const SHORT_LINE_CHARS = 20;
 
 const encoder = new TextEncoder();
 
 /**
  * 候选行：规则已识别为章节或卷的行，以及规则未识别、但较短且含关键词的行（GLOSSARY「候选行」）。
  * ruleKinds 是规则给出的标题行类别（行下标 → 类别）。
+ * firstChapters 是规则判为第 1 章的标题行下标（含序号重置）：它前面的短行可能是规则漏判的卷名，也作为候选行。
  */
-export function candidateLines(lines: readonly string[], ruleKinds: ReadonlyMap<number, TitleKind>): CandidateLine[] {
+export function candidateLines(
+  lines: readonly string[],
+  ruleKinds: ReadonlyMap<number, TitleKind>,
+  firstChapters: Iterable<number> = [],
+): CandidateLine[] {
   const ids = lineIds(lines);
+  const leads = new Set<number>();
+  for (const t of firstChapters) {
+    let j = t - 1;
+    while (j >= 0 && !lines[j]!.trim()) j--;
+    if (j >= 0 && !ruleKinds.has(j) && isShortLine(lines[j]!.trim())) leads.add(j);
+  }
   const candidates: CandidateLine[] = [];
   let offset = 0;
   lines.forEach((line, i) => {
@@ -101,7 +116,7 @@ export function candidateLines(lines: readonly string[], ruleKinds: ReadonlyMap<
     if (!id) return;
     const text = line.trim();
     const rule = ruleKinds.get(i) ?? "body";
-    if (rule === "body" && !looksLikeTitle(text)) return;
+    if (rule === "body" && !looksLikeTitle(text) && !leads.has(i)) return;
     let k = i + 1;
     while (k < lines.length && !lines[k]!.trim()) k++;
     candidates.push({
@@ -122,9 +137,6 @@ export function candidateLines(lines: readonly string[], ruleKinds: ReadonlyMap<
 
 /** 章节正文不到这么多字时，它的标题算可疑：请假条、感言这类作者公告通常很短。 */
 export const SHORT_CHAPTER_CHARS = 500;
-/** 标题含这些词时算可疑：有编号的作者公告，例如「第 100 章 请假」。 */
-const NOTICE_WORDS = /请假|感言|公告|停更|通知|上架|完本|单章|说明|致歉|抱歉/;
-
 /** 一个章节在可疑判断中用到的信息。 */
 export interface ChapterSignal {
   title: string;
@@ -141,7 +153,8 @@ export interface ChapterSignal {
  * 1. 优先行：规则漏判的短行，以及没有「第 N 章」编号的标题；
  * 2. 涉及章节序号异常的章节标题；
  * 3. 正文不到 SHORT_CHAPTER_CHARS 字的章节标题；
- * 4. 含作者公告用词的行。
+ * 4. 含作者公告用词的行，例如「第 100 章 请假」。
+ * 第 1 章前的短行（见 candidateLines）规则判为正文，属于第 1 类。
  * 其余编号连续、正文正常的「第 N 章」标题直接相信规则。
  */
 export function markSuspicious(candidates: readonly CandidateLine[], chapters: readonly ChapterSignal[]): CandidateLine[] {
@@ -158,8 +171,20 @@ export function markSuspicious(candidates: readonly CandidateLine[], chapters: r
   });
 }
 
+/** 形状像标题：不以引号、括号开头，不以标点结尾。 */
+const titleShaped = (text: string) => !/^[「『“"'‘（(【《]/.test(text) && !/[。！？!?…”」』】—，,；;：:]$/.test(text);
+
 function looksLikeTitle(text: string): boolean {
-  if ([...text].length > MAX_TITLE_CHARS) return false;
-  if (/^[「『“"'‘（(【《]/.test(text) || /[。！？!?…”」』】—，,；;：:]$/.test(text)) return false;
-  return NEAR_MISS_WORDS.test(text);
+  return [...text].length <= MAX_TITLE_CHARS && titleShaped(text) && NEAR_MISS_WORDS.test(text);
 }
+
+const isShortLine = (text: string) => [...text].length <= SHORT_LINE_CHARS && titleShaped(text);
+
+/**
+ * 疑似作者公告的独立短行，例如「生病了，请假一天」。清洗时它保持单独成行（单独成段、没有缩进），
+ * 不与下一行正文合并，这样它会成为候选行，交给 AI 判断；规则仍判为正文。
+ */
+export const isNoticeLine = (line: string) => {
+  const text = line.trim();
+  return isShortLine(text) && LEAVE_WORDS.test(text);
+};

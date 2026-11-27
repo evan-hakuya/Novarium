@@ -149,7 +149,9 @@ function ruleTitleLines(lines: string[], options: SplitOptions): Map<number, Tit
 /** 整理后正文中交给 AI 复核的候选行（GLOSSARY「候选行」），并标出其中可疑的行。 */
 export function findCandidateLines(text: string, options: SplitOptions): CandidateLine[] {
   const lines = text.split("\n");
-  const candidates = candidateLines(lines, ruleTitleLines(lines, options));
+  const kinds = ruleTitleLines(lines, options);
+  const firstChapters = [...kinds].filter(([i, kind]) => kind === "chapter" && extractChapterOrder(lines[i]!.trim()) === 1).map(([i]) => i);
+  const candidates = candidateLines(lines, kinds, firstChapters);
   const chapters = splitChapters(text, options);
   // 涉及序号异常的章节：乱序、重复编号，以及缺号前后的两章。分卷边界系统已自动处理，不算。
   const anomalous = new Set<number>();

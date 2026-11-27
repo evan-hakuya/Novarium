@@ -47,10 +47,9 @@ export const LINE_KIND_TEXT: Record<LineKind, string> = { chapter: "章节", vol
 
 /**
  * AI 与规则一致时不需要处理。作者公告也是章节，所以规则判为公告、AI 判为章节时一致。
- * 规则判为正文的作者公告仍留在正文里。
+ * AI 判为作者公告、规则判为正文或章节时不一致：修复后这一行单独成章，不带序号。
  */
-const agrees = (rule: LineKind, ai: LineKind) =>
-  ai === rule || (ai === "notice" && rule === "body") || (ai === "chapter" && rule === "notice");
+const agrees = (rule: LineKind, ai: LineKind) => ai === rule || (ai === "chapter" && rule === "notice");
 
 const byId = (keys: readonly string[]) => {
   const map = new Map<string, NonNullable<ReturnType<typeof parseLineOverrideKey>>>();
@@ -113,13 +112,13 @@ export function reviewAiLines(
   return items;
 }
 
-/** 置信度不低于 0.8、与规则不一致、且尚未处理的判断直接采用为行级修正。作者公告总是交给所有者处理。 */
+/** 置信度不低于 0.8、与规则不一致、且尚未处理的判断直接采用为行级修正，作者公告也一样。 */
 export function autoApply(candidates: readonly CandidateLine[], options: ProcessOptions, results: AiResults): ProcessOptions | null {
   const handled = new Set([...byId(options.lineOverrides).keys(), ...byId(options.lineIgnores).keys()]);
   const added: string[] = [];
   for (const c of candidates) {
     const r = results.get(c.id);
-    if (!r || r.kind === "notice" || r.confidence < AI_CONFIDENT || handled.has(c.id) || agrees(c.rule, r.kind)) continue;
+    if (!r || r.confidence < AI_CONFIDENT || handled.has(c.id) || agrees(c.rule, r.kind)) continue;
     added.push(lineOverrideKey(r.kind, c.text, c.occurrence));
   }
   return added.length ? { ...options, lineOverrides: [...options.lineOverrides, ...added] } : null;
