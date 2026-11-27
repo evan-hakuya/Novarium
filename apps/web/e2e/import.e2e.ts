@@ -11,11 +11,15 @@ const MISSING = 50;
 /** 应用本书章节正则后重新整理并渲染预览的时间上限。 */
 const PATTERN_BUDGET_MS = 10_000;
 
-test("imports a large manuscript", async ({ page }) => {
+const login = async (page: import("@playwright/test").Page) => {
   await page.goto("/login");
   await page.locator("#password").fill(OWNER_PASSWORD);
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page).not.toHaveURL(/\/login/);
+};
+
+test("imports a large manuscript", async ({ page }) => {
+  await login(page);
 
   await page.goto("/import");
   await page.locator("#file").setInputFiles({
@@ -123,4 +127,43 @@ test("imports a large manuscript", async ({ page }) => {
   await expect(page.getByText("当前版本有 1 处缺号未忽略")).toBeVisible();
   // 作者公告随章节索引保存，书详情页同样标出。
   await expect(page.getByRole("button", { name: "上架感言 作者公告", exact: true })).toBeVisible();
+});
+
+test("an AI review item jumps to and highlights its line", async ({ page }) => {
+  const LINE = "请假一天";
+  // 第 2 章很长（分成多页），被复核的行在第 2 页。
+  const long = Array.from({ length: 800 }, (_, k) => `　　这是第2章的第${k + 1}段，用来测试跳转到异常所在的行。`);
+  const text = ["第1章 测试", "　　正文。", "第2章 测试", ...long, LINE, "　　后面的正文。", "第3章 测试", "　　正文。"].join("\n");
+  // 只拦截 AI 接口：部署看起来配置并开启了 AI；这一行判为作者公告，置信度不够自动修复，留作待处理。
+  await page.route("**/api/admin/settings/ai", (route) => route.fulfill({ json: { configured: true, mode: "rest", enabled: true } }));
+  await page.route("**/api/admin/ai/lines", async (route) => {
+    const { questions } = route.request().postDataJSON() as { questions: { id: string; line: string }[] };
+    const results = Object.fromEntries(questions.filter((q) => q.line === LINE).map((q) => [q.id, { kind: "notice", confidence: 0.5 }]));
+    await route.fulfill({ json: { results } });
+  });
+  await login(page);
+  await page.goto("/import");
+  await page.locator("#file").setInputFiles({ name: "跳转测试.txt", mimeType: "text/plain", buffer: Buffer.from(text) });
+  await expect(page.getByText("3 章 · 整理后")).toBeVisible({ timeout: 60_000 });
+
+  page.once("dialog", (d) => void d.accept());
+  await page.getByRole("button", { name: /^复核全部/ }).click();
+  const panel = page.locator("section").filter({ hasText: "章节异常" });
+  await expect(panel.getByText(`「${LINE}」`)).toBeVisible();
+
+  const article = page.locator("article[data-chapter-scroll]");
+  const mark = article.locator("mark[data-highlight]");
+  for (let i = 0; i < 2; i++) {
+    // 第二次：先翻回第 1 页再跳，也要回到高亮行所在的页。
+    if (i === 1) await article.getByRole("button", { name: "上一页" }).click();
+    await panel.getByRole("button", { name: "第2章 测试", exact: true }).click();
+    await expect(mark).toHaveText(LINE);
+    await expect(mark).toBeFocused();
+    await expect(mark).toBeInViewport();
+    await expect(article.getByText(/第 2 \/ \d 页/)).toBeVisible();
+  }
+
+  // 换到别的章节后不再高亮。
+  await page.getByRole("button", { name: "第3章 测试", exact: true }).first().click();
+  await expect(mark).toHaveCount(0);
 });

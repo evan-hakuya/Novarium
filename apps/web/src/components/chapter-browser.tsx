@@ -21,6 +21,7 @@ const scrollsItself = (el: Element) => getComputedStyle(el).overflowY === "auto"
  * 章节有所属卷时，列表在每卷第一章前显示不可点击的卷名。
  * 传入 selected 与 onSelect 时由调用方控制当前章节；flagged 中的章节在列表中标出。
  * revealKey 每变一次（例如从异常面板跳转），就把正文滚入视口并把焦点移到章节标题。
+ * 正文中有高亮行（[data-highlight]，见 ChapterText 的 highlight）时，改为滚到并聚焦这一行。
  */
 export function ChapterBrowser({
   chapters,
@@ -78,6 +79,12 @@ export function ChapterBrowser({
     reveal.current.pending = false;
     const article = articleRef.current;
     if (!article) return;
+    const mark = article.querySelector<HTMLElement>("[data-highlight]");
+    if (mark) {
+      mark.scrollIntoView({ block: "center" });
+      mark.focus({ preventScroll: true });
+      return;
+    }
     // 宽屏正文自己滚动：跳到已选中的章节时 selected 不变，要在这里把正文滚回开头。
     if (scrollsItself(article)) {
       article.scrollTo({ top: 0 });
@@ -161,16 +168,41 @@ function pageStarts(text: string): number[] {
   return starts;
 }
 
-export function ChapterText({ text }: { text: string }) {
-  const starts = useMemo(() => pageStarts(text), [text]);
-  const [page, setPage] = useState(0);
-  const topRef = useRef<HTMLDivElement>(null);
+/** 在正文中找到去掉首尾空白后等于 line 的那一行，返回它的位置与所在页；找不到时为 null。 */
+export function locateLine(text: string, line: string): { start: number; end: number; page: number } | null {
+  if (!line) return null;
+  for (let at = text.indexOf(line); at >= 0; at = text.indexOf(line, at + 1)) {
+    const lineStart = text.lastIndexOf("\n", at) + 1;
+    const newline = text.indexOf("\n", at);
+    if (text.slice(lineStart, newline < 0 ? text.length : newline).trim() !== line) continue;
+    const page = pageStarts(text).filter((s) => s <= lineStart).length - 1;
+    return { start: at, end: at + line.length, page };
+  }
+  return null;
+}
 
-  useEffect(() => setPage(0), [text]);
+/**
+ * 章节正文，分页显示。传入 highlight 时，打开它所在的页并用 <mark data-highlight> 标出这一行；
+ * 调用方要在每次跳转时换 key 重新挂载，使初始页指向高亮行。
+ */
+export function ChapterText({ text, highlight }: { text: string; highlight?: string }) {
+  const starts = useMemo(() => pageStarts(text), [text]);
+  const hit = useMemo(() => (highlight ? locateLine(text, highlight) : null), [text, highlight]);
+  const [page, setPage] = useState(() => hit?.page ?? 0);
+  const topRef = useRef<HTMLDivElement>(null);
+  // 换章时回到第一页。在渲染中重置，不在 effect 中，否则首次挂载也会把高亮行所在的页改回第一页。
+  const [shownText, setShownText] = useState(text);
+  if (shownText !== text) {
+    setShownText(text);
+    setPage(0);
+  }
 
   if (!text) return <div className="pb-6 text-muted-foreground">（本章没有正文）</div>;
   const current = Math.min(page, starts.length - 1);
-  const body = text.slice(starts[current], starts[current + 1] ?? text.length);
+  const pageStart = starts[current]!;
+  const pageEnd = starts[current + 1] ?? text.length;
+  const body = text.slice(pageStart, pageEnd);
+  const marked = hit && hit.start >= pageStart && hit.end <= pageEnd;
   const pages = starts.length;
   const go = (p: number) => {
     setPage(p);
@@ -183,7 +215,19 @@ export function ChapterText({ text }: { text: string }) {
 
   return (
     <div ref={topRef}>
-      <div className="whitespace-pre-wrap pb-6 leading-8">{body}</div>
+      <div className="whitespace-pre-wrap pb-6 leading-8">
+        {marked ? (
+          <>
+            {text.slice(pageStart, hit.start)}
+            <mark data-highlight tabIndex={-1} className="rounded-sm bg-amber-200 px-0.5 text-foreground outline-none dark:bg-amber-500/40">
+              {text.slice(hit.start, hit.end)}
+            </mark>
+            {text.slice(hit.end, pageEnd)}
+          </>
+        ) : (
+          body
+        )}
+      </div>
       {/* 固定在正文区域底部的工具栏，滚动到任何位置都能翻页。 */}
       <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-2 border-t bg-background/95 px-4 py-2 text-sm text-muted-foreground backdrop-blur md:-mx-6 md:px-6">
         <span>本章 {text.length.toLocaleString()} 字</span>
