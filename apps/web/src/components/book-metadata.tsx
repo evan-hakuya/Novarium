@@ -69,6 +69,8 @@ export function BookMetadataPanel({ book }: { book: Book }) {
     },
   });
   const error = [save, cover, uncover, remove].find((m) => m.isError)?.error;
+  // 首发月份与描述中的「首发日期」重复，DaoSearch 书页的标签区也不显示它。
+  const facets = (book.facets ?? []).filter((f) => f.key !== "first_published");
 
   function onCoverFile(file: File | undefined) {
     if (!file) return;
@@ -192,10 +194,10 @@ export function BookMetadataPanel({ book }: { book: Book }) {
           </>
         ) : (
           <>
-            {!!book.facets?.length && (
+            {facets.length > 0 && (
               // 平台标记：源站给的特殊标签，排在标签上方，与 DaoSearch 书页一致。
               <ul className="flex flex-wrap gap-1.5" aria-label="平台标记">
-                {book.facets.map((facet) => {
+                {facets.map((facet) => {
                   const { name, value } = facetText(facet);
                   return (
                     <li key={facet.key}>

@@ -39,10 +39,21 @@
 | 字段 | 用法 |
 |---|---|
 | `title.zh` `author.zh` `synopsis_zh` `tags[].zh` `cover_url` | 写入书名、作者、简介、标签（合并）、封面（下载后存入自己的存储） |
-| `genre.zh` `subgenre.zh` `status` `word_count` `released` `updated_at` `other_names` `title.en` `author.en` `facets` `mature` `source_url` `also_on` | 描述字段（#42），存在 `books` 表。别名取 `other_names[].name`（没有中文时取 `name_translated`）与 `title.en`，合并进现有别名。`facets` 保存 `key`、`label`、`value_label`，后台按 `key` 显示中文名称，未知的 `key` 显示 `label`。`source_url` 与 `also_on[].url` 只接受 https。分类、子分类、连载状态与别名可由所有者编辑。书源的 `kind` 为「分类,子分类,标签」，`wordCount` 取 `word_count`，搜索也匹配别名 |
+| `genre.zh` `subgenre.zh` `status` `word_count` `released` `updated_at` `other_names` `title.en` `author.en` `facets` `mature` `source_url` `also_on` | 描述字段（#42），存在 `books` 表。别名取 `other_names[].name`（没有中文时取 `name_translated`）与 `title.en`，合并进现有别名。`facets` 保存 `key`、`label`、`value_label`（存为 `value`）与原值 `value`（存为 `raw`，#99 起）。API 只返回英文，后台按 `key` 与原值显示成中文胶囊，排在标签上方，与 DaoSearch 书页一致；对照表只收实测见过的值，未知的值显示源站文字。实测取值见下方「平台标记」。`source_url` 与 `also_on[].url` 只接受 https。分类、子分类、连载状态与别名可由所有者编辑。书源的 `kind` 为「分类,子分类,标签」，`wordCount` 取 `word_count`，搜索也匹配别名 |
 | `source` `source_book_id` `url` | 刮削来源 ID 与署名链接 |
 | `metrics` `rankings` `source_rating_count` `source_comment_count` `booklist_count` `pace` `availability` `refreshed_at` | 快照（#43），存在 `books.snapshot`，每次刮削整体替换，不需要勾选。`metrics` 保留 `key`、`value`、`period`，名称取 `/sources` 的中文名；`rankings` 取 `board_zh`、`channel_zh`（没有时取英文名）与 `position`、`url`。后台按平台给出的名称显示，注明刮削日期，不跨平台比较 |
 | `latest_chapter(_en)` `chapter_count` `synopsis_en` `english_translation` `licences` `translated_by` `*_url` | 不用 |
+
+### 平台标记
+
+DaoSearch 中文书页的标签区先显示平台标记，再显示普通标签。是或否的标记只显示名称（签约），读者与阅读方式只显示值（男频、VIP付费），其余显示名称和值（作家等级 白金）。2026-11-27 实测的取值：
+
+| 平台 | key=原值（value_label） | 中文 |
+|---|---|---|
+| 起点 | audience=male (Male)、signed=true、author_tier=Platinum | 男频、签约、作家等级 白金 |
+| 晋江 | theme=Love、pov=女主 (Female Lead)、age=13+、signed=true、access=paid (Paid (VIP)) | 主题 爱情、视角 女主、年龄 13+、签约、VIP付费 |
+| 七猫 | audience=male、licensed_from=Chinese Online | 男频、版权方 中文在线 |
+| SF 轻小说 | paid_vip=true、first_published=2019-12 (Dec 2019) | VIP付费（首发月份 DaoSearch 书页不显示） |
 
 ## 条款要点
 
