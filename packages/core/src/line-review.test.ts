@@ -126,6 +126,14 @@ describe("候选行", () => {
     const line = findCandidateLines(book.text, DEFAULT_PROCESS_OPTIONS).find((c) => c.text === "个人番外篇 : 与你相配");
     expect(line).toMatchObject({ rule: "body", suspicious: true });
   });
+
+  it("含番外、完结的折行正文与对话照常合并", async () => {
+    const manuscript = "第一章 开端\n他说这本书终于要完结了，读者们都在等着看最后\n一章。\n“番外\n还写吗？”她问。\n";
+    const book = await processManuscript(utf8(manuscript), { ...DEFAULT_PROCESS_OPTIONS });
+    const lines = book.text.split("\n").map((l) => l.trim()).filter(Boolean);
+    expect(lines).toContain("他说这本书终于要完结了，读者们都在等着看最后一章。");
+    expect(lines).toContain("“番外还写吗？”她问。");
+  });
 });
 
 describe("分章应用行级修正", () => {

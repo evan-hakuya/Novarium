@@ -80,8 +80,10 @@ export interface CandidateLine {
   suspicious: boolean;
 }
 
+/** 番外、后记这类非「第 N 章」的标题用词：找候选行与清洗时保持单独成行都用它。 */
+const EXTRA_TITLE_WORDS = /番外|完结|后记|尾声|楔子|序章|终章/;
 /** 规则判为正文、但像标题的短行：含这些词之一。 */
-const NEAR_MISS_WORDS = new RegExp(`第|番外|卷|完结|后记|尾声|楔子|序章|终章|${NOTICE_WORDS.source}`);
+const NEAR_MISS_WORDS = new RegExp(`第|卷|${EXTRA_TITLE_WORDS.source}|${NOTICE_WORDS.source}`);
 /** 规则判为章节、且有「第 N 章/回/节」编号的行：规则基本不会错，排在后面。 */
 const NUMBERED_TITLE = /^第\s*[〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟\d]+\s*[章回节]/;
 const MAX_TITLE_CHARS = 40;
@@ -180,14 +182,14 @@ function looksLikeTitle(text: string): boolean {
 
 const isShortLine = (text: string) => [...text].length <= SHORT_LINE_CHARS && titleShaped(text);
 
-/** 清洗时保持单独成行的词：请假条用词，以及番外、后记这类在正文短句里少见的标题用词。「第」「卷」太常见，不在其中。 */
-const KEEP_LINE_WORDS = new RegExp(`${LEAVE_WORDS.source}|番外|后记|尾声|楔子|序章|终章|完结`);
+/** 清洗时保持单独成行的词：请假条用词与标题用词。「第」「卷」在折行正文的片段里太常见，不在其中。 */
+const KEEP_LINE_WORDS = new RegExp(`${LEAVE_WORDS.source}|${EXTRA_TITLE_WORDS.source}`);
 
 /**
  * 疑似作者公告或标题的独立短行，例如「生病了，请假一天」「个人番外篇 : 与你相配」。
  * 清洗时它保持单独成行（单独成段、没有缩进），不与下一行正文合并，这样它会成为候选行，交给 AI 判断；规则仍判为正文。
  */
-export const isNoticeLine = (line: string) => {
+export const isKeptShortLine = (line: string) => {
   const text = line.trim();
   return isShortLine(text) && KEEP_LINE_WORDS.test(text);
 };
