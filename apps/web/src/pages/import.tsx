@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { guessBookName } from "@/lib/book-name";
 import { countPending, reviewNumbers } from "@/lib/number-review";
+import { volumeNames } from "@/lib/process";
 import { useAiReview } from "@/lib/use-ai-review";
 import { useProcessPreview } from "@/lib/use-process-preview";
 
@@ -253,6 +254,7 @@ export function ImportPage() {
       (!!suggestion.author && suggestion.author !== author.trim()) ||
       (!!suggestion.intro && suggestion.intro !== intro.trim()));
 
+  const volumeCount = version ? volumeNames(version.chapters).length : 0;
   // 导入按钮禁用的全部原因，显示在按钮旁并作为它的描述。
   const blockers = [
     processing && "整理中",
@@ -398,7 +400,9 @@ export function ImportPage() {
           <Step n={4} title="确认导入">
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <p id="import-status" className="text-muted-foreground">
-                {version.chapters.length} 章 · 整理后 {formatBytes(version.text.byteLength)} · 原稿原样保留
+                {version.chapters.length} 章
+                {volumeCount > 0 && ` · ${volumeCount} 卷`} · 整理后{" "}
+                {formatBytes(version.text.byteLength)} · 原稿原样保留
                 {blockers.length > 0 && <span className="text-destructive"> · {blockers.join(" · ")}</span>}
               </p>
               <Button aria-describedby="import-status" onClick={onSubmit} disabled={blockers.length > 0}>

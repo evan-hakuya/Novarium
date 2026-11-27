@@ -177,7 +177,8 @@ test("volumes fold their chapters and unfold on a jump", async ({ page }) => {
   await login(page);
   await page.goto("/import");
   await page.locator("#file").setInputFiles({ name: "分卷测试.txt", mimeType: "text/plain", buffer: Buffer.from(text) });
-  await expect(page.getByText("4 章 · 整理后")).toBeVisible({ timeout: 60_000 });
+  // 确认导入一步同时显示章节数与卷数。
+  await expect(page.getByText("4 章 · 2 卷 · 整理后")).toBeVisible({ timeout: 60_000 });
 
   const list = page.locator("ol").filter({ has: page.locator("[data-order]") });
   // 「第1章 雨夜」在缺号前，列表中带异常提示，按阅读顺序定位。
@@ -198,4 +199,11 @@ test("volumes fold their chapters and unfold on a jump", async ({ page }) => {
   await expect(volume).toHaveAttribute("aria-expanded", "true");
   await expect(rainyNight).toBeVisible();
   await expect(page.locator("article[data-chapter-scroll] h2")).toHaveText("第1章 雨夜");
+
+  // 重新整理页同时比较新旧版本的章节数与卷数。
+  await page.locator("#title").fill("分卷测试");
+  await page.getByRole("button", { name: "导入这本书", exact: true }).click();
+  await expect(page).toHaveURL(/\/books\/[^/]+$/, { timeout: 60_000 });
+  await page.goto(`${new URL(page.url()).pathname}/reprocess`);
+  await expect(page.getByText("当前 4 章 · 2 卷 → 新版本 4 章 · 2 卷 · 整理后", { exact: false })).toBeVisible({ timeout: 60_000 });
 });
