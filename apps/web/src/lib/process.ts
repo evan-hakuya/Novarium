@@ -30,3 +30,8 @@ const decoder = new TextDecoder();
 export function chapterText(text: Uint8Array, chapter: ChapterDraft): string {
   return decoder.decode(text.subarray(chapter.byteOffset, chapter.byteOffset + chapter.byteLength));
 }
+
+/** 卷名，按出现顺序；相邻章节同名的算一卷，与章节列表的分组一致。 */
+export function volumeNames(chapters: readonly { volume?: string | null }[]): string[] {
+  return chapters.flatMap((c, i) => (c.volume && c.volume !== chapters[i - 1]?.volume ? [c.volume] : []));
+}
