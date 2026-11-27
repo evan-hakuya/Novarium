@@ -234,12 +234,13 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
     return result.data;
   }
 
-  /** 缓存状态：与 getCached 的过期判断一致，不发请求。 */
-  async function status(path: string): Promise<CacheStatus> {
+  /** 缓存状态：与 getCached 的判断一致（格式不对的缓存当作没有），不发请求。 */
+  async function status(path: string, valid: (data: unknown) => boolean, maxAgeMs = DAOSEARCH_CACHE_MS): Promise<CacheStatus> {
     const entry = cache ? await cache.get(path) : null;
-    if (!entry) return "none";
-    return now() - entry.fetchedAt < DAOSEARCH_CACHE_MS ? "fresh" : "stale";
+    if (!entry || !valid(entry.data)) return "none";
+    return now() - entry.fetchedAt < maxAgeMs ? "fresh" : "stale";
   }
+  const isBook = (data: unknown) => !!data && typeof data === "object" && "source_book_id" in data;
   const searchPath = (query: string) => `/search?${new URLSearchParams({ q: query, limit: String(SEARCH_LIMIT) })}`;
   const bookPath = (ref: string) => {
     const { platform, id } = parseRef(ref);
@@ -289,17 +290,20 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
       return found.map(toCandidate);
     },
     async getBook(ref) {
-      const isBook = (data: unknown) => !!data && typeof data === "object" && "source_book_id" in data;
       const book = await getCached<DaoSearchBook>(bookPath(ref), isBook);
       return toBook(book, await platformInfo(book.source));
     },
-    searchStatus: (query) => status(searchPath(query)),
+    searchStatus: (query) => status(searchPath(query), Array.isArray),
     async bookStatus(ref) {
+      let path: string;
       try {
-        return await status(bookPath(ref));
+        path = bookPath(ref);
       } catch {
         return "none"; // 无效的 ref 没有缓存
       }
+      // 读取详情时还会读 /sources（缓存 7 天），取两者中较差的状态。
+      const states = [await status(path, isBook), await status("/sources", Array.isArray, DAOSEARCH_SOURCES_CACHE_MS)];
+      return states.includes("none") ? "none" : states.includes("stale") ? "stale" : "fresh";
     },
     async check(): Promise<ScrapeQuota> {
       const limits = await get<DaoSearchLimits>("/limits/me");

@@ -215,7 +215,9 @@ export function createScrapeRoutes() {
     if (!source) return c.json({ error: "scrape_not_configured" }, 409);
     try {
       const results = rankByAuthor(await source.search(q), author);
-      return c.json({ results: await Promise.all(results.map(async (r) => ({ ...r, cached: await source.bookStatus(r.ref) }))) });
+      // 搜索已经完成（可能已扣点），读缓存状态出错时只当作没有缓存，不让整个响应失败。
+      const cached = (ref: string) => source.bookStatus(ref).catch(() => "none" as const);
+      return c.json({ results: await Promise.all(results.map(async (r) => ({ ...r, cached: await cached(r.ref) }))) });
     } catch (error) {
       return scrapeErrorResponse(c, error);
     }

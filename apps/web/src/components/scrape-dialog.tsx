@@ -45,6 +45,7 @@ export type ScrapeApply = (scraped: ScrapedBook, fields: ScrapeField[]) => Promi
 
 /** DaoSearch 的点数：搜索 5 点，查看一部作品的详情 1 点（docs/agents/daosearch.md）。 */
 const SEARCH_POINTS = 5;
+const DETAIL_POINTS = 1;
 
 interface FlowProps {
   target: ScrapeTarget;
@@ -172,7 +173,7 @@ function ScrapeFlow({ target, onApply, onDone }: FlowProps) {
                     {platformName(result.platform)}
                     {detailCost(result) && detailCost(result) !== "none" && (
                       <Badge variant="outline" className="ml-2">
-                        详情{costText(detailCost(result)!, 1)}
+                        详情{costText(detailCost(result)!, DETAIL_POINTS)}
                       </Badge>
                     )}
                   </span>
