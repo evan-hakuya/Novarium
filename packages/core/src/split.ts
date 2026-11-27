@@ -1,6 +1,6 @@
 import { extractChapterOrder } from "./vendor/novel-processor/novel";
 import { CHAPTER_TITLE_MAX_LEN, detectChapterUnit, isChapterTitleLine, isNoticeTitle } from "./vendor/novel-processor/regex";
-import { applyNumberFixes, findNumberAnomalies } from "./numbering";
+import { applyNumberFixes, findNumberAnomalies, renumberTitle } from "./numbering";
 import { candidateLines, leadLine, lineIds, lineOverrideMap, markSuspicious, type CandidateLine, type TitleKind } from "./line-review";
 import type { ChapterDraft } from "./types";
 
@@ -190,6 +190,7 @@ export function findCandidateLines(text: string, options: SplitOptions): Candida
     if (a.kind === "missing") anomalous.add(a.after).add(a.after + 1);
     else if (a.kind === "duplicate") a.orders.forEach((o) => anomalous.add(o));
     else if (a.kind === "outOfOrder") anomalous.add(a.order);
+    else if (a.kind === "numberTypo") anomalous.add(a.first).add(a.order);
   }
   const bytes = encoder.encode(text);
   const decoder = new TextDecoder();
@@ -245,14 +246,24 @@ function chapterSegments(lines: string[], options: SplitOptions): Segment[] {
   return segments;
 }
 
-/** 按所有者选择的修复调整正文中各章节的位置（规则见 applyNumberFixes），返回调整后的正文。 */
+/**
+ * 按所有者选择的修复调整正文，返回调整后的正文：先改写编号笔误章节标题中的序号，
+ * 再调整乱序章节的位置（规则见 applyNumberFixes）。
+ */
 export function applyNumberFixesToText(text: string, options: SplitOptions, fixes: readonly string[]): string {
   const lines = text.split("\n");
-  const segments = chapterSegments(lines, options);
-  const order = applyNumberFixes(
-    segments.map((s, i) => ({ order: i, title: s.title, number: s.number, volume: s.volume, volumeStart: s.volumeStart })),
-    fixes,
-  );
+  const asChapters = (segments: Segment[]) =>
+    segments.map((s, i) => ({ order: i, title: s.title, number: s.number, volume: s.volume, volumeStart: s.volumeStart }));
+  let segments = chapterSegments(lines, options);
+  const wanted = new Set(fixes);
+  const typos = findNumberAnomalies(asChapters(segments)).filter((a) => a.kind === "numberTypo" && wanted.has(a.key));
+  for (const a of typos) {
+    if (a.kind !== "numberTypo") continue;
+    const at = segments[a.order]!.titleLine!;
+    lines[at] = lines[at]!.replace(a.title, renumberTitle(a.title, a.number + 1)!);
+  }
+  if (typos.length > 0) segments = chapterSegments(lines, options);
+  const order = applyNumberFixes(asChapters(segments), fixes);
   return order.map((i) => lines.slice(segments[i]!.from, segments[i]!.to).join("\n")).join("\n");
 }
 

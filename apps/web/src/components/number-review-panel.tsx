@@ -48,6 +48,7 @@ const KIND_HELP: Record<ReviewKind, string> = {
   outOfOrder: "修复：把这一章连同其后的番外等无序号章节，移到同一分卷中按序号应在的位置。",
   missing: UNFIXABLE_HELP,
   duplicate: UNFIXABLE_HELP,
+  numberTypo: "相邻两章用了同一个序号，下一章跳过一个序号。修复：把第二章标题中的序号改为跳过的那个；不挡住导入。",
   sectionReset: "序号重新从 1 开始，视为新的分卷，分卷内单独检查，无需处理。",
   aiLine: "修复即按 AI 的判断修正这一行；置信度不低于 0.8 的判断已自动修复，标为「AI」。",
   notice: "修复后单独成章、不带序号，标为作者公告，不参与序号检查；忽略则保持规则的结果。",
@@ -312,6 +313,13 @@ type Jump = (order: number, line?: string) => ReactNode;
 function ItemText({ item, jump }: { item: ReviewItem; jump: Jump }) {
   if (isAiItem(item)) return <AiItemText item={item} jump={jump} />;
   if (item.status === "fixed") {
+    if (item.kind === "numberTypo") {
+      return (
+        <>
+          序号笔误：「{item.title}」已改为第 {item.number + 1} 章{item.order !== null && <>（{jump(item.order)}）</>}
+        </>
+      );
+    }
     return (
       <>
         乱序：{item.order === null ? item.title : jump(item.order)}（第 {item.number} 章）已移到按序号的位置
@@ -319,6 +327,13 @@ function ItemText({ item, jump }: { item: ReviewItem; jump: Jump }) {
     );
   }
   const a = item.anomaly;
+  if (a.kind === "numberTypo") {
+    return (
+      <>
+        序号笔误：{jump(a.first)} 之后的 {jump(a.order)} 应为第 {a.number + 1} 章（第 {a.number} 章重复，第 {a.number + 1} 章缺失）
+      </>
+    );
+  }
   if (a.kind === "sectionReset") {
     return (
       <>

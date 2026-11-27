@@ -1,4 +1,5 @@
 // 章节序号的异常检查与逐条修复。只看章节的阅读顺序、标题与章节序号，不读正文。
+import { extractChapterOrder } from "./vendor/novel-processor/novel";
 
 export interface NumberedChapter {
   order: number;
@@ -23,24 +24,75 @@ export type NumberAnomaly = { key: string; section: number } & (
   | { kind: "duplicate"; number: number; orders: number[] }
   /** 乱序：章节不在分卷内按序号递增的最长序列上，位置需要调整。 */
   | { kind: "outOfOrder"; order: number; number: number; title: string }
+  /**
+   * 编号笔误：相邻两章都是第 number 章，下一章是 number + 2，缺 number + 1。
+   * 第二章（order）应为 number + 1；first 是第一章。取代对应的重复编号与缺号。
+   */
+  | { kind: "numberTypo"; order: number; first: number; number: number; title: string }
 );
 
 export type NumberAnomalyKind = NumberAnomaly["kind"];
 
-/** 可以由系统修复的异常类型：乱序章节可以移动到按序号应在的位置。 */
-export const isFixable = (a: NumberAnomaly) => a.kind === "outOfOrder";
+/** 可以由系统修复的异常类型：乱序章节可以移动到按序号应在的位置；编号笔误可以改写标题中的序号。 */
+export const isFixable = (a: NumberAnomaly) => a.kind === "outOfOrder" || a.kind === "numberTypo";
 /** 系统已自动处理、不需要所有者操作的异常类型。 */
 export const needsNoAction = (a: NumberAnomaly) => a.kind === "sectionReset";
 
 type Numbered = NumberedChapter & { number: number };
 
-const outOfOrderKey = (section: number, number: number, title: string) => `outOfOrder|${section}|${number}|${title}`;
+const fixKey = (kind: "outOfOrder" | "numberTypo", section: number, number: number, title: string) => `${kind}|${section}|${number}|${title}`;
 
-/** 从 key 读出乱序章节的序号与标题，用于显示已修复的异常。 */
-export function parseOutOfOrderKey(key: string): { section: number; number: number; title: string } | null {
+/** 从可修复异常的 key 读出类型、修复前的序号与标题，用于显示已修复的异常。 */
+export function parseFixKey(key: string): { kind: "outOfOrder" | "numberTypo"; section: number; number: number; title: string } | null {
   const [kind, section, number, ...title] = key.split("|");
-  if (kind !== "outOfOrder" || !section || !number) return null;
-  return { section: Number(section), number: Number(number), title: title.join("|") };
+  if ((kind !== "outOfOrder" && kind !== "numberTypo") || !section || !number) return null;
+  return { kind, section: Number(section), number: Number(number), title: title.join("|") };
+}
+
+const TITLE_NUMBER = /第?([〇零一二三四五六七八九十百千万两壹贰叁肆伍陆柒捌玖拾佰仟萬\d]+)\s*[章节卷集幕回部篇]/;
+const DIGITS = "零一二三四五六七八九";
+const UNITS = ["", "十", "百", "千"];
+
+/** 1 到 9999 的小写中文数字，例如 1201 → 一千二百零一。 */
+function chineseBelow10000(x: number): string {
+  let s = "";
+  let zero = false;
+  for (let i = 3; i >= 0; i--) {
+    const d = Math.floor(x / 10 ** i) % 10;
+    if (d === 0) {
+      if (s) zero = true;
+      continue;
+    }
+    if (zero) s += "零";
+    zero = false;
+    s += DIGITS[d]! + UNITS[i]!;
+  }
+  return s;
+}
+
+/** 正整数（小于一亿）的小写中文数字：12 → 十二，230 → 二百三十，10001 → 一万零一。 */
+export function toChineseNumeral(n: number): string {
+  const high = Math.floor(n / 10000);
+  const low = n % 10000;
+  const s = high
+    ? `${chineseBelow10000(high)}万${low && low < 1000 ? "零" : ""}${low ? chineseBelow10000(low) : ""}`
+    : chineseBelow10000(low);
+  return s.startsWith("一十") ? s.slice(1) : s;
+}
+
+/**
+ * 把标题中的章节序号改为 n，保持阿拉伯数字或小写中文数字的写法：「第六章 选择」→「第七章 选择」。
+ * 其他写法（大写数字、混合写法）或改写后读不出 n 时返回 null。
+ */
+export function renumberTitle(title: string, n: number): string | null {
+  const m = TITLE_NUMBER.exec(title);
+  if (!m) return null;
+  const old = m[1]!;
+  const next = /^\d+$/.test(old) ? String(n) : /^[零一二三四五六七八九十百千万]+$/.test(old) ? toChineseNumeral(n) : null;
+  if (!next) return null;
+  const start = m.index + m[0].indexOf(old);
+  const result = title.slice(0, start) + next + title.slice(start + old.length);
+  return extractChapterOrder(result) === n ? result : null;
 }
 
 /**
@@ -107,22 +159,33 @@ export function findNumberAnomalies(chapters: readonly NumberedChapter[]): Numbe
     const byNumber = new Map<number, number[]>();
     for (const c of section) byNumber.set(c.number, [...(byNumber.get(c.number) ?? []), c.order]);
 
+    // 编号笔误：只有这两章用了 n，二者在分卷的有序号章节中相邻，下一章是 n + 2，且标题可以改写。
+    const typos = new Set<number>();
+    section.forEach((c, i) => {
+      const prev = section[i - 1];
+      const n = c.number;
+      if (prev?.number !== n || byNumber.get(n)!.length !== 2 || section[i + 1]?.number !== n + 2) return;
+      if (!renumberTitle(c.title, n + 1)) return;
+      typos.add(n);
+      anomalies.push({ key: fixKey("numberTypo", s, n, c.title), section: s, kind: "numberTypo", order: c.order, first: prev.order, number: n, title: c.title });
+    });
+
     const sorted = [...byNumber.keys()].sort((a, b) => a - b);
     for (let i = 1; i < sorted.length; i++) {
       const a = sorted[i - 1]!;
       const b = sorted[i]!;
-      if (b - a > 1) {
+      if (b - a > 1 && !(typos.has(a) && b === a + 2)) {
         anomalies.push({ key: `missing|${s}|${a + 1}|${b - 1}`, section: s, kind: "missing", from: a + 1, to: b - 1, after: byNumber.get(a)![0]! });
       }
     }
     for (const n of sorted) {
       const orders = byNumber.get(n)!;
-      if (orders.length > 1) anomalies.push({ key: `duplicate|${s}|${n}`, section: s, kind: "duplicate", number: n, orders });
+      if (orders.length > 1 && !typos.has(n)) anomalies.push({ key: `duplicate|${s}|${n}`, section: s, kind: "duplicate", number: n, orders });
     }
     for (const i of misplaced(section)) {
       const c = section[i]!;
       anomalies.push({
-        key: outOfOrderKey(s, c.number, c.title),
+        key: fixKey("outOfOrder", s, c.number, c.title),
         section: s,
         kind: "outOfOrder",
         order: c.order,

@@ -68,9 +68,12 @@ function NumberNotice({
   const advisory = reviewNumbers(chapters, { numberIgnores: options.numberIgnores ?? [], numberFixes: options.numberFixes ?? [] }).filter(
     (i) => i.status === "pending" && isAdvisory(i),
   );
-  const missing = advisory.filter((i) => itemKind(i) === "missing").length;
-  const duplicate = advisory.length - missing;
-  const parts = [missing > 0 && `${missing} 处缺号`, duplicate > 0 && `${duplicate} 处重复编号`].filter(Boolean);
+  const count = (kind: string) => advisory.filter((i) => itemKind(i) === kind).length;
+  const parts = [
+    [count("missing"), "缺号"],
+    [count("duplicate"), "重复编号"],
+    [count("numberTypo"), "序号笔误"],
+  ].flatMap(([n, label]) => (n ? [`${n} 处${label}`] : []));
   if (parts.length === 0) return null;
   return (
     <p className="text-sm text-amber-700 dark:text-amber-400">

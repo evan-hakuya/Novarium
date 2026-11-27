@@ -17,6 +17,7 @@ interface Result {
   outOfOrder: number;
   missing: number;
   duplicate: number;
+  numberTypo: number;
   sectionReset: number;
   suspicious: number;
   /** 每章一行：`标题 | 序号 | 卷`，作者公告前加「公告 」。 */
@@ -34,6 +35,7 @@ async function evaluate(bytes: Uint8Array): Promise<Result> {
     outOfOrder: count("outOfOrder"),
     missing: count("missing"),
     duplicate: count("duplicate"),
+    numberTypo: count("numberTypo"),
     sectionReset: count("sectionReset"),
     suspicious: findCandidateLines(text, DEFAULT_PROCESS_OPTIONS).filter((c) => c.suspicious).length,
     titles: chapters.map((c) => `${c.notice ? "作者公告 " : ""}${c.title} | ${c.number ?? "-"} | ${c.volume ?? "-"}`),
