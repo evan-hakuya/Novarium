@@ -163,7 +163,10 @@ test("an AI review item jumps to and highlights its line", async ({ page }) => {
     await expect(article.getByText(/第 2 \/ \d 页/)).toBeVisible();
   }
 
-  // 换到别的章节后不再高亮。
+  // 换到别的章节后不再高亮；切回来也从第 1 页开始，不再高亮。
   await page.getByRole("button", { name: "第3章 测试", exact: true }).first().click();
+  await expect(mark).toHaveCount(0);
+  await page.locator('ol button[data-order="1"]').click();
+  await expect(article.getByText(/第 1 \/ \d 页/)).toBeVisible();
   await expect(mark).toHaveCount(0);
 });

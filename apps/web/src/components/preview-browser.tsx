@@ -61,7 +61,11 @@ export function PreviewBrowser({
       <ChapterBrowser
         chapters={version.chapters}
         selected={selected}
-        onSelect={setSelected}
+        onSelect={(order) => {
+          setSelected(order);
+          // 从列表打开别的章节后，再切回来也不再停在高亮行所在的页。
+          if (order !== selected) setTarget(undefined);
+        }}
         flagged={flagged}
         revealKey={reveal}
         renderContent={(c) => (

@@ -168,14 +168,14 @@ function pageStarts(text: string): number[] {
   return starts;
 }
 
-/** 在正文中找到去掉首尾空白后等于 line 的那一行，返回它的位置与所在页；找不到时为 null。 */
-export function locateLine(text: string, line: string): { start: number; end: number; page: number } | null {
+/** 在正文中找到去掉首尾空白后等于 line 的那一行，返回它的位置与所在页（starts 见 pageStarts）；找不到时为 null。 */
+export function locateLine(text: string, line: string, starts = pageStarts(text)): { start: number; end: number; page: number } | null {
   if (!line) return null;
   for (let at = text.indexOf(line); at >= 0; at = text.indexOf(line, at + 1)) {
     const lineStart = text.lastIndexOf("\n", at) + 1;
     const newline = text.indexOf("\n", at);
     if (text.slice(lineStart, newline < 0 ? text.length : newline).trim() !== line) continue;
-    const page = pageStarts(text).filter((s) => s <= lineStart).length - 1;
+    const page = starts.filter((s) => s <= lineStart).length - 1;
     return { start: at, end: at + line.length, page };
   }
   return null;
@@ -187,7 +187,7 @@ export function locateLine(text: string, line: string): { start: number; end: nu
  */
 export function ChapterText({ text, highlight }: { text: string; highlight?: string }) {
   const starts = useMemo(() => pageStarts(text), [text]);
-  const hit = useMemo(() => (highlight ? locateLine(text, highlight) : null), [text, highlight]);
+  const hit = useMemo(() => (highlight ? locateLine(text, highlight, starts) : null), [text, highlight, starts]);
   const [page, setPage] = useState(() => hit?.page ?? 0);
   const topRef = useRef<HTMLDivElement>(null);
   // 换章时回到第一页。在渲染中重置，不在 effect 中，否则首次挂载也会把高亮行所在的页改回第一页。
