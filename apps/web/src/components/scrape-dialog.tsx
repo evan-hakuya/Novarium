@@ -220,7 +220,7 @@ function ScrapeDetail({ candidate, ...props }: DetailProps & { candidate: Scrape
       <DialogTitle>{candidate.title ?? "（无书名）"}</DialogTitle>
       <DialogDescription>
         {gone
-          ? "DaoSearch 上已经没有这部作品。书的现有数据与快照都保留不变；可以重新搜索，换成另一部作品。"
+          ? "DaoSearch 上已经没有这部作品。书的现有数据保留不变；可以重新搜索，换成另一部作品。"
           : detail.isError
             ? scrapeFailureReason(detail.error)
             : rescrape
@@ -376,7 +376,7 @@ function ScrapeCompare({ target, onApply, onDone, scraped, rescrape, onBack }: D
     <>
       <DialogTitle>对比并写入</DialogTitle>
       <DialogDescription>
-        勾选要写入的项。标签与别名合并进现有的值，不删除已有的。快照（月票、榜单等）每次刮削都自动整体替换，不用勾选。来源：
+        勾选要写入的项。标签与别名合并进现有的值，不删除已有的。来源：
         <a className="underline" href={scraped.url} target="_blank" rel="noreferrer">
           {platformName(scraped.platform)} · DaoSearch
         </a>
