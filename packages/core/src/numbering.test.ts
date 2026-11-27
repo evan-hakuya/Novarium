@@ -64,6 +64,14 @@ describe("findNumberAnomalies", () => {
     expect(kinds([6, 6, 6, 8])).toEqual(["numberTypo", "duplicate"]);
   });
 
+  it("连续两处笔误按改正后的前一章判断，不会多报", () => {
+    expect(findNumberAnomalies(chapters([6, 6, 8, 8, 10]))).toMatchObject([
+      { kind: "numberTypo", order: 1, expected: 7 },
+      { kind: "numberTypo", order: 3, expected: 9 },
+    ]);
+    expect(findNumberAnomalies(chapters([6, 6, 8, 8, 10]))).toHaveLength(2);
+  });
+
   it("标题序号不能按原写法改写（大写数字）时，仍报重复编号与缺号", () => {
     const list = ["第伍章", "第陆章 甲", "第陆章 乙", "第捌章"].map((title, order) => ({ order, number: [5, 6, 6, 8][order]!, title }));
     expect(findNumberAnomalies(list).map((a) => a.kind)).toEqual(["missing", "duplicate"]);

@@ -161,10 +161,15 @@ export function findNumberAnomalies(chapters: readonly NumberedChapter[]): Numbe
 
   sections.forEach((written, s) => {
     // 序号笔误：前后相邻的有序号章节是 p 与 p + 2，分卷中没有 p + 1，这一章却不是 p + 1，且标题可以改写。
+    // p 取前一章改正后的序号，改正出的 p + 1 也算已有，连续两处笔误（6、6、8、8、10）才不会互相干扰。
     const present = new Set(written.map((c) => c.number));
-    const section = written.map((c, i) => {
-      const p = written[i - 1]?.number;
-      if (p === undefined || written[i + 1]?.number !== p + 2 || present.has(p + 1) || !renumberTitle(c.title, p + 1)) return c;
+    const section: Numbered[] = [];
+    written.forEach((c, i) => {
+      const p = section[i - 1]?.number;
+      if (p === undefined || written[i + 1]?.number !== p + 2 || present.has(p + 1) || !renumberTitle(c.title, p + 1)) {
+        section.push(c);
+        return;
+      }
       anomalies.push({
         key: fixKey("numberTypo", s, p + 1, c.title),
         section: s,
@@ -175,7 +180,8 @@ export function findNumberAnomalies(chapters: readonly NumberedChapter[]): Numbe
         expected: p + 1,
         title: c.title,
       });
-      return { ...c, number: p + 1 };
+      present.add(p + 1);
+      section.push({ ...c, number: p + 1 });
     });
     const byNumber = new Map<number, number[]>();
     for (const c of section) byNumber.set(c.number, [...(byNumber.get(c.number) ?? []), c.order]);
