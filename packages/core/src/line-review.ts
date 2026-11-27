@@ -188,7 +188,8 @@ const isPostscript = (text: string) => /^p{1,2}\.?\s*s\.?\s*\d*\s*[:：]/i.test(
 export function leadLine(lines: readonly string[], t: number): number | null {
   let j = t - 1;
   while (j >= 0 && !lines[j]!.trim()) j--;
-  return j >= 0 && isShortLine(lines[j]!.trim()) && !isPostscript(lines[j]!.trim()) ? j : null;
+  const text = lines[j]?.trim() ?? "";
+  return j >= 0 && isShortLine(text) && !isPostscript(text) ? j : null;
 }
 
 /** 清洗时保持单独成行的词：请假条用词与标题用词。「第」「卷」在折行正文的片段里太常见，不在其中。 */
