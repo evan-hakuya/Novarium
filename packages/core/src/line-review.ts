@@ -180,11 +180,14 @@ function looksLikeTitle(text: string): boolean {
 
 const isShortLine = (text: string) => [...text].length <= SHORT_LINE_CHARS && titleShaped(text);
 
+/** 清洗时保持单独成行的词：请假条用词，以及番外、后记这类在正文短句里少见的标题用词。「第」「卷」太常见，不在其中。 */
+const KEEP_LINE_WORDS = new RegExp(`${LEAVE_WORDS.source}|番外|后记|尾声|楔子|序章|终章|完结`);
+
 /**
- * 疑似作者公告的独立短行，例如「生病了，请假一天」。清洗时它保持单独成行（单独成段、没有缩进），
- * 不与下一行正文合并，这样它会成为候选行，交给 AI 判断；规则仍判为正文。
+ * 疑似作者公告或标题的独立短行，例如「生病了，请假一天」「个人番外篇 : 与你相配」。
+ * 清洗时它保持单独成行（单独成段、没有缩进），不与下一行正文合并，这样它会成为候选行，交给 AI 判断；规则仍判为正文。
  */
 export const isNoticeLine = (line: string) => {
   const text = line.trim();
-  return isShortLine(text) && LEAVE_WORDS.test(text);
+  return isShortLine(text) && KEEP_LINE_WORDS.test(text);
 };
