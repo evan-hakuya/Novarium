@@ -118,6 +118,22 @@ describe("候选行", () => {
     // 含新增公告用词的对话不是候选行。
     expect(findCandidateLines("第一章 开端\n　　“抱歉，停更通知”\n", DEFAULT_PROCESS_OPTIONS).map((c) => c.text)).toEqual(["第一章 开端"]);
   });
+
+  it("整理时没有结尾标点的番外短标题不与下一行正文合并，成为可疑的候选行", async () => {
+    const manuscript = "第一章 开端\n他推开门。\n\n个人番外篇 : 与你相配\n\n　　伦敦的音乐厅座无虚席。\n";
+    const book = await processManuscript(utf8(manuscript), { ...DEFAULT_PROCESS_OPTIONS });
+    expect(book.text.split("\n").map((l) => l.trim())).toContain("个人番外篇 : 与你相配");
+    const line = findCandidateLines(book.text, DEFAULT_PROCESS_OPTIONS).find((c) => c.text === "个人番外篇 : 与你相配");
+    expect(line).toMatchObject({ rule: "body", suspicious: true });
+  });
+
+  it("含番外、完结的折行正文与对话照常合并", async () => {
+    const manuscript = "第一章 开端\n他说这本书终于要完结了，读者们都在等着看最后\n一章。\n“番外\n还写吗？”她问。\n";
+    const book = await processManuscript(utf8(manuscript), { ...DEFAULT_PROCESS_OPTIONS });
+    const lines = book.text.split("\n").map((l) => l.trim()).filter(Boolean);
+    expect(lines).toContain("他说这本书终于要完结了，读者们都在等着看最后一章。");
+    expect(lines).toContain("“番外还写吗？”她问。");
+  });
 });
 
 describe("分章应用行级修正", () => {
