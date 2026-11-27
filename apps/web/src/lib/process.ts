@@ -35,3 +35,16 @@ export function chapterText(text: Uint8Array, chapter: ChapterDraft): string {
 export function volumeNames(chapters: readonly { volume?: string | null }[]): string[] {
   return chapters.flatMap((c, i) => (c.volume && c.volume !== chapters[i - 1]?.volume ? [c.volume] : []));
 }
+
+/**
+ * 重新整理时新旧版本的卷数文字。任一版本有卷就两边都显示（分卷规则可能只改卷、不改章节数）；
+ * 卷数相同但卷名不同时 renamed 为 true。
+ */
+export function volumeChange(before: readonly string[], after: readonly string[]) {
+  const show = before.length + after.length > 0;
+  return {
+    before: show ? ` · ${before.length} 卷` : "",
+    after: show ? ` · ${after.length} 卷` : "",
+    renamed: before.length === after.length && before.join("\n") !== after.join("\n"),
+  };
+}

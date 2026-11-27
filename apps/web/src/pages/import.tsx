@@ -254,8 +254,8 @@ export function ImportPage() {
       (!!suggestion.author && suggestion.author !== author.trim()) ||
       (!!suggestion.intro && suggestion.intro !== intro.trim()));
 
-  // 导入按钮禁用的全部原因，显示在按钮旁并作为它的描述。
   const volumeCount = version ? volumeNames(version.chapters).length : 0;
+  // 导入按钮禁用的全部原因，显示在按钮旁并作为它的描述。
   const blockers = [
     processing && "整理中",
     uploading && "导入中",

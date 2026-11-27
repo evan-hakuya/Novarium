@@ -9,7 +9,7 @@ import { OptionsPanel } from "@/components/options-panel";
 import { PreviewBrowser } from "@/components/preview-browser";
 import { Button } from "@/components/ui/button";
 import { countPending, reviewNumbers } from "@/lib/number-review";
-import { volumeNames } from "@/lib/process";
+import { volumeChange as describeVolumes, volumeNames } from "@/lib/process";
 import { useAiReview } from "@/lib/use-ai-review";
 import { useProcessPreview } from "@/lib/use-process-preview";
 
@@ -73,15 +73,7 @@ export function ReprocessPage() {
   const saving = saveStep !== null;
   const current = detail.data;
   const version = preview?.version;
-  // 只要新旧任一版本有卷就显示两边的卷数：分卷规则可能只改卷、不改章节数。
-  const before = volumeNames(current.chapters);
-  const after = version ? volumeNames(version.chapters) : [];
-  const showVolumes = before.length + after.length > 0;
-  const volumeChange = {
-    before: showVolumes ? ` · ${before.length} 卷` : "",
-    after: showVolumes ? ` · ${after.length} 卷` : "",
-    renamed: before.length === after.length && before.join("\n") !== after.join("\n"),
-  };
+  const volumeChange = describeVolumes(volumeNames(current.chapters), version ? volumeNames(version.chapters) : []);
 
   return (
     <div className="flex flex-col gap-4">
