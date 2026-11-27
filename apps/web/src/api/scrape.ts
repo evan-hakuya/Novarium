@@ -52,7 +52,7 @@ export interface ScrapedBook extends ScrapeCandidate {
   aliases: string[];
   authorEn: string | null;
   sourceUpdatedAt: string | null;
-  facets: { key: string; label: string; value: string }[];
+  facets: Facet[];
   mature: boolean | null;
   sourceUrl: string | null;
   alsoOn: { platform: string; url: string }[];
@@ -125,28 +125,65 @@ export function formatReleased(released: Released | null): string | null {
 
 export const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("zh-CN") : null);
 
-const facetNames: Record<string, string> = {
-  audience: "读者",
-  pov: "视角",
-  theme: "题材",
-  age: "年龄",
-  access: "阅读方式",
+/** 平台标记。value 是源站显示的英文文字，raw 是 DaoSearch 的原值（#99 起保存，如 male、true、女主）。 */
+export interface Facet {
+  key: string;
+  label: string;
+  value: string;
+  raw?: string;
+}
+
+/** 是或否的标记：只显示名称，例如「签约」。 */
+const flagNames: Record<string, string> = {
   signed: "签约",
   vip: "VIP",
-  paid_vip: "付费 VIP",
+  paid_vip: "VIP付费",
   editors_pick: "编辑推荐",
   exclusive: "独家",
   first_on_source: "首发",
-  licensed: "授权",
-  licensed_from: "授权来源",
-  author_tier: "作者等级",
+  licensed: "授权作品",
   fan_title: "同人",
   branching_story: "多分支",
-  first_published: "首发月份",
 };
 
-/** 平台标记，例如「签约：Signed」。不认识的 key 用刮削源给出的名称。 */
-export const formatFacet = (facet: { key: string; label: string; value: string }) => `${facetNames[facet.key] ?? facet.label}：${facet.value}`;
+/** 只显示值的标记，例如「男频」。 */
+const valueOnly: Record<string, Record<string, string>> = {
+  audience: { male: "男频", Male: "男频", female: "女频", Female: "女频" },
+  access: { paid: "VIP付费", "Paid (VIP)": "VIP付费", free: "免费", Free: "免费" },
+};
+
+/** 显示名称和值的标记，例如「作家等级 白金」。值的中文只收实测见过的，没见过的显示源站文字。 */
+const named: Record<string, { name: string; values?: Record<string, string> }> = {
+  author_tier: { name: "作家等级", values: { Platinum: "白金" } },
+  pov: { name: "视角", values: { "Female Lead": "女主", "Male Lead": "男主" } },
+  theme: { name: "主题", values: { Love: "爱情" } },
+  age: { name: "年龄" },
+  licensed_from: { name: "版权方", values: { "Chinese Online": "中文在线" } },
+  first_published: { name: "首发" },
+};
+
+const hasHan = (s: string) => /\p{Script=Han}/u.test(s);
+
+/** 平台标记的中文显示：name 为空时只显示 value。DaoSearch 书页的标签区也是这样显示的。 */
+export function facetText(facet: Facet): { name: string | null; value: string } {
+  const flag = flagNames[facet.key];
+  if (flag && (facet.raw === "true" || facet.value === facet.label)) return { name: null, value: flag };
+  const only = valueOnly[facet.key];
+  const value = only?.[facet.raw ?? ""] ?? only?.[facet.value];
+  if (value) return { name: null, value };
+  const n = named[facet.key];
+  if (facet.key === "first_published" && facet.raw && /^\d{4}-\d{2}$/.test(facet.raw)) {
+    return { name: n!.name, value: `${facet.raw.slice(0, 4)}年${Number(facet.raw.slice(5))}月` };
+  }
+  const v = n?.values?.[facet.raw ?? ""] ?? n?.values?.[facet.value] ?? (facet.raw && hasHan(facet.raw) ? facet.raw : facet.value);
+  return { name: n?.name ?? flag ?? facet.label, value: v };
+}
+
+/** 平台标记的文字，例如「男频」「作家等级 白金」。 */
+export const formatFacet = (facet: Facet) => {
+  const { name, value } = facetText(facet);
+  return name ? `${name} ${value}` : value;
+};
 
 const kindText: Record<string, string> = {
   invalid_key: "密钥无效或已撤销，请在 DaoSearch 账号页检查",

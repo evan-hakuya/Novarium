@@ -13,7 +13,7 @@ import {
   type BookDetail,
   type BookMetadata,
 } from "@/api/books";
-import { applyScrape, fetchScrapeStatus, refPlatform, scrapeStatusQueryKey } from "@/api/scrape";
+import { applyScrape, facetText, fetchScrapeStatus, refPlatform, scrapeStatusQueryKey } from "@/api/scrape";
 import { BookDescriptionView } from "@/components/book-description";
 import { BookSnapshotView } from "@/components/book-snapshot";
 import { ChipInput } from "@/components/chip-input";
@@ -192,6 +192,22 @@ export function BookMetadataPanel({ book }: { book: Book }) {
           </>
         ) : (
           <>
+            {!!book.facets?.length && (
+              // 平台标记：源站给的特殊标签，排在标签上方，与 DaoSearch 书页一致。
+              <ul className="flex flex-wrap gap-1.5" aria-label="平台标记">
+                {book.facets.map((facet) => {
+                  const { name, value } = facetText(facet);
+                  return (
+                    <li key={facet.key}>
+                      <Badge variant="outline">
+                        {name && <span className="font-normal text-muted-foreground">{name}</span>}
+                        <span className="font-semibold">{value}</span>
+                      </Badge>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {book.tags.length > 0 ? (
                 book.tags.map((tag) => (

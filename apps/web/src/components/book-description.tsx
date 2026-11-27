@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { BookDescription } from "@/api/books";
-import { formatDate, formatFacet, formatReleased, formatWordCount, platformName, statusText } from "@/api/scrape";
+import { formatDate, formatReleased, formatWordCount, platformName, statusText } from "@/api/scrape";
 import { Badge } from "@/components/ui/badge";
 
 /** 书的描述字段（#42）。只列出有值的项；没有刮削也没有编辑过时不显示。 */
@@ -17,7 +17,6 @@ export function BookDescriptionView({ book }: { book: BookDescription }) {
   if (released) rows.push(["首发日期", released]);
   const updated = formatDate(book.sourceUpdatedAt);
   if (updated) rows.push(["源站更新", updated]);
-  if (book.facets?.length) rows.push(["平台标记", book.facets.map(formatFacet).join("、")]);
   if (book.sourceUrl) {
     rows.push([
       "源站链接",

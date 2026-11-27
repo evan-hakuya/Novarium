@@ -53,8 +53,8 @@ export const books = sqliteTable("books", {
   released: text("released", { mode: "json" }).$type<Released>(),
   /** 源站最后更新章节的时间。 */
   sourceUpdatedAt: integer("source_updated_at", { mode: "timestamp_ms" }),
-  /** 平台标记，例如 { key: "signed", label: "Signed", value: "Signed" }。 */
-  facets: text("facets", { mode: "json" }).$type<{ key: string; label: string; value: string }[]>(),
+  /** 平台标记，例如 { key: "signed", label: "Signed", value: "Signed", raw: "true" }。#99 之前保存的没有 raw。 */
+  facets: text("facets", { mode: "json" }).$type<{ key: string; label: string; value: string; raw?: string }[]>(),
   /** 成人向。null 表示不知道。 */
   mature: integer("mature", { mode: "boolean" }),
   /** 这本书在源站的页面。 */

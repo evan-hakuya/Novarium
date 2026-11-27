@@ -95,7 +95,7 @@ const scraped = {
   aliases: ["LOTM", "旧书名", "Lord of the Mysteries"],
   authorEn: null,
   sourceUpdatedAt: "2025-08-14T01:00:00Z",
-  facets: [{ key: "signed", label: "Signed", value: "Signed" }],
+  facets: [{ key: "signed", label: "Signed", value: "Signed", raw: "true" }],
   mature: false,
   sourceUrl: "https://www.qidian.com/book/1010868264/",
   alsoOn: [{ platform: "zongheng", url: "https://daosearch.io/zongheng/book/1/x" }],
