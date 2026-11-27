@@ -157,7 +157,8 @@ describe("候选行", () => {
     const book = [
       "第一章 开端", ...body(10), "风声", ...body(10),
       "第二章 继续", ...body(20),
-      "第三章 结尾", ...body(20), "海边的一天", ...body(40), "海边的黄昏", ...body(40),
+      // 超长章节中的附言与对话仍不是候选行。
+      "第三章 结尾", ...body(20), "海边的一天", ...body(40), "海边的黄昏", ...body(40), "PS：明天见", "“走吧”",
       "第四章 尾声", ...body(20),
     ].join("\n");
     const marked = findCandidateLines(book, { chapterPattern: null }).filter((c) => c.rule === "body");
