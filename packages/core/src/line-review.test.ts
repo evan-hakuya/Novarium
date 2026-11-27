@@ -27,7 +27,12 @@ describe("行级修正的记法", () => {
     expect(parseLineOverrideKey(key)).toEqual({ kind: "chapter", text: "番外|雨夜", occurrence: 2, id: "2|番外|雨夜" });
     expect(parseLineOverrideKey("bad|0|x")).toBeNull();
     expect(parseLineOverrideKey("chapter|x|y")).toBeNull();
-    expect(lineOverrideMap(["notice|0|请假条", "body|0|第一章 开端"])).toEqual(new Map([["0|第一章 开端", "body"]]));
+    expect(lineOverrideMap(["notice|0|请假条", "body|0|第一章 开端"])).toEqual(
+      new Map([
+        ["0|请假条", "notice"],
+        ["0|第一章 开端", "body"],
+      ]),
+    );
   });
 
   it("整理选项接受并去重 lineOverrides 与 lineIgnores；早期选项没有这两项时为空", () => {

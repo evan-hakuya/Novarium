@@ -26,4 +26,3 @@ export {
 } from "./numbering";
 export { validateChapterIndex, MAX_CHAPTERS } from "./validate";
 export { formatWordCount } from "./word-count";
-export { isNoticeTitle } from "./vendor/novel-processor/regex";

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { isNoticeTitle } from "@novarium/core";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -9,6 +8,7 @@ export interface ChapterItem {
   byteLength: number;
   /** 所属卷名；没有卷时为 null 或不提供。 */
   volume?: string | null;
+  notice: boolean;
 }
 
 /** 正文区域自己滚动（宽屏两栏）；窄屏一栏时由页面滚动。 */
@@ -121,7 +121,7 @@ export function ChapterBrowser({
                 {c.title}
               </span>
               {c.byteLength === 0 && <span className="shrink-0 text-xs text-muted-foreground">空</span>}
-              {isNoticeTitle(c.title) && <span className="shrink-0 text-xs text-muted-foreground">作者公告</span>}
+              {c.notice && <span className="shrink-0 text-xs text-muted-foreground">作者公告</span>}
             </button>
           </li>
         ))}

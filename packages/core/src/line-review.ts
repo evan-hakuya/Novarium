@@ -1,9 +1,9 @@
 // AI 复核（ADR 0007）用到的行：候选行的识别与行级修正的记法。只看整理后的正文，不调用 AI。
 
-/** 一行的类别。notice 是作者公告，只作为 AI 的判断出现，不直接改变分章。 */
+/** 一行的类别。notice 是作者公告的标题：单独成章，不带序号（GLOSSARY「作者公告」）。 */
 export type LineKind = "chapter" | "volume" | "notice" | "body";
-/** 规则或修正能给一行定的类别。 */
-export type SplitLineKind = Exclude<LineKind, "notice">;
+/** 标题行的类别。 */
+export type TitleKind = Exclude<LineKind, "body">;
 
 /** 提示词改动时加 1：浏览器中缓存的旧结果随之失效。 */
 export const AI_LINE_PROMPT_VERSION = 1;
@@ -34,12 +34,12 @@ export function parseLineOverrideKey(key: string): { kind: LineKind; text: strin
   return { kind, text, occurrence: Number(occurrence), id: lineId(text, Number(occurrence)) };
 }
 
-/** 整理选项中的行级修正，按行标识索引。只保留能改变分章的类别。 */
-export function lineOverrideMap(keys: readonly string[] | undefined): Map<string, SplitLineKind> {
-  const map = new Map<string, SplitLineKind>();
+/** 整理选项中的行级修正，按行标识索引。 */
+export function lineOverrideMap(keys: readonly string[] | undefined): Map<string, LineKind> {
+  const map = new Map<string, LineKind>();
   for (const key of keys ?? []) {
     const parsed = parseLineOverrideKey(key);
-    if (parsed && parsed.kind !== "notice") map.set(parsed.id, parsed.kind);
+    if (parsed) map.set(parsed.id, parsed.kind);
   }
   return map;
 }
@@ -69,7 +69,7 @@ export interface CandidateLine {
   /** 本行与下一个非空行之间隔着空行。 */
   gap: boolean;
   /** 只按规则（不含行级修正）给出的类别。 */
-  rule: SplitLineKind;
+  rule: LineKind;
   /** 本行在整理后正文中的起始字节，用于定位章节。 */
   byteOffset: number;
   /** 优先判断：规则最可能出错的行。单次复核有上限时先发送这些行。 */
@@ -90,7 +90,7 @@ const encoder = new TextEncoder();
  * 候选行：规则已识别为章节或卷的行，以及规则未识别、但较短且含关键词的行（GLOSSARY「候选行」）。
  * ruleKinds 是规则给出的标题行类别（行下标 → 类别）。
  */
-export function candidateLines(lines: readonly string[], ruleKinds: ReadonlyMap<number, "chapter" | "volume">): CandidateLine[] {
+export function candidateLines(lines: readonly string[], ruleKinds: ReadonlyMap<number, TitleKind>): CandidateLine[] {
   const ids = lineIds(lines);
   const candidates: CandidateLine[] = [];
   let offset = 0;

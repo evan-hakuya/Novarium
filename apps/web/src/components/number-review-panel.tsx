@@ -50,7 +50,7 @@ const KIND_HELP: Record<ReviewKind, string> = {
   duplicate: UNFIXABLE_HELP,
   sectionReset: "序号重新从 1 开始，视为新的分卷，分卷内单独检查，无需处理。",
   aiLine: "修复即按 AI 的判断修正这一行；置信度不低于 0.8 的判断已自动修复，标为「AI」。",
-  notice: "修复后并入上一章；忽略则保留为章节。",
+  notice: "修复后单独成章、不带序号，标为作者公告，不参与序号检查；忽略则保持规则的结果。",
 };
 
 /** 一次最多渲染的条数；全选与批量操作仍作用于标签页中的全部异常。 */

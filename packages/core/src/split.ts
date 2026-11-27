@@ -1,7 +1,7 @@
 import { extractChapterOrder } from "./vendor/novel-processor/novel";
 import { CHAPTER_TITLE_MAX_LEN, detectChapterUnit, isChapterTitleLine, isNoticeTitle } from "./vendor/novel-processor/regex";
 import { applyNumberFixes, findNumberAnomalies } from "./numbering";
-import { candidateLines, lineIds, lineOverrideMap, markSuspicious, type CandidateLine } from "./line-review";
+import { candidateLines, lineIds, lineOverrideMap, markSuspicious, type CandidateLine, type TitleKind } from "./line-review";
 import type { ChapterDraft } from "./types";
 
 export type { ChapterDraft };
@@ -77,6 +77,7 @@ export function splitChapters(text: string, options: SplitOptions): ChapterDraft
       title: segment.title,
       number: segment.number,
       volume: segment.volume,
+      notice: !!segment.notice,
       ...bodyRange(bodyFrom, segment.to),
     });
   }
@@ -97,6 +98,8 @@ interface Segment {
   volumeStart: boolean;
   /** 是否生成章节。卷标题与第一章之间没有正文时，卷标题段不生成章节。 */
   isChapter: boolean;
+  /** 作者公告：单独成章，不带序号。 */
+  notice?: boolean;
 }
 
 const VOLUME_NUMERAL = "[\\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+";
@@ -130,15 +133,15 @@ export const isVolumeTitleLine = volumeMatcher(null);
  * 卷标题与第一章之间有正文时（如卷首语），这段正文作为一个以卷标题为标题的章节。
  */
 /** 只按规则（不含行级修正）判断的标题行：行下标 → 章节或卷。 */
-function ruleTitleLines(lines: string[], options: SplitOptions): Map<number, "chapter" | "volume"> {
+function ruleTitleLines(lines: string[], options: SplitOptions): Map<number, TitleKind> {
   const unit = detectChapterUnit(lines);
   const isTitle = titleMatcher(lines, options, unit);
   // 只用本书正则时，所有者完全接管标题识别，不再识别卷。
   const isVolume = options.chapterPatternMode === "replace" && options.chapterPattern ? () => false : volumeMatcher(unit);
-  const kinds = new Map<number, "chapter" | "volume">();
+  const kinds = new Map<number, TitleKind>();
   lines.forEach((line, i) => {
     if (isVolume(line)) kinds.set(i, "volume");
-    else if (isTitle(line)) kinds.set(i, "chapter");
+    else if (isTitle(line)) kinds.set(i, isNoticeTitle(line) ? "notice" : "chapter");
   });
   return kinds;
 }
@@ -179,7 +182,7 @@ function chapterSegments(lines: string[], options: SplitOptions): Segment[] {
       else if (kind) kinds.set(i, kind);
     });
   }
-  const titleLines = [...kinds].sort((a, b) => a[0] - b[0]).map(([line, kind]) => ({ line, volume: kind === "volume" }));
+  const titleLines = [...kinds].sort((a, b) => a[0] - b[0]).map(([line, kind]) => ({ line, kind }));
   if (titleLines.length === 0) {
     return [
       { title: WHOLE_BOOK_TITLE, number: null, titleLine: null, from: 0, to: lines.length, volume: null, volumeStart: false, isChapter: true },
@@ -191,17 +194,19 @@ function chapterSegments(lines: string[], options: SplitOptions): Segment[] {
     segments.push({ title: PREFACE_TITLE, number: null, titleLine: null, from: 0, to: firstTitle, volume: null, volumeStart: false, isChapter: true });
   }
   let volume: string | null = null;
-  titleLines.forEach(({ line: lineIndex, volume: isVolumeLine }, k) => {
+  titleLines.forEach(({ line: lineIndex, kind }, k) => {
     const title = lines[lineIndex]!.trim();
     // 第一个标题前只有空行时，这些空行并入第一章。
     const from = k === 0 && segments.length === 0 ? 0 : lineIndex;
     const to = titleLines[k + 1]?.line ?? lines.length;
-    if (isVolumeLine) {
+    if (kind === "volume") {
       volume = title;
       const hasBody = lines.slice(lineIndex + 1, to).some((line) => line.trim());
       segments.push({ title, number: null, titleLine: lineIndex, from, to, volume, volumeStart: true, isChapter: hasBody });
     } else {
-      segments.push({ title, number: extractChapterOrder(title), titleLine: lineIndex, from, to, volume, volumeStart: false, isChapter: true });
+      const notice = kind === "notice";
+      const number = notice ? null : extractChapterOrder(title);
+      segments.push({ title, number, titleLine: lineIndex, from, to, volume, volumeStart: false, isChapter: true, notice });
     }
   });
   return segments;

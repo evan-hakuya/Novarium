@@ -37,7 +37,7 @@ describe("重新整理", () => {
   const detail = async () =>
     (await (await app.fetchApi(`/api/admin/books/${bookId}`, { headers: { cookie } })).json()) as {
       version: { id: string; options: unknown };
-      chapters: { title: string }[];
+      chapters: { title: string; notice: boolean }[];
     };
 
   async function uploadVersion(chapterTexts: [string, string][]) {
@@ -77,12 +77,15 @@ describe("重新整理", () => {
   });
 
   it("切换到新版本，删除旧版本的正文与索引，原稿不变", async () => {
+    // 早期客户端不提交作者公告，视为不是公告。
+    expect((await detail()).chapters.map((c) => c.notice)).toEqual([false, false]);
     const v = await uploadVersion(newChapters);
-    expect((await post(`/api/admin/books/${bookId}/versions`, { versionId: v.versionId, options: newOptions, chapters: v.chapters })).status).toBe(201);
+    const chapters = [{ ...v.chapters[0]!, notice: true }];
+    expect((await post(`/api/admin/books/${bookId}/versions`, { versionId: v.versionId, options: newOptions, chapters })).status).toBe(201);
 
     const d = await detail();
     expect(d.version).toMatchObject({ id: v.versionId, options: newOptions });
-    expect(d.chapters.map((c) => c.title)).toEqual(["卷一 全"]);
+    expect(d.chapters.map((c) => [c.title, c.notice])).toEqual([["卷一 全", true]]);
 
     const { storage, db } = app.deps;
     expect(await storage.exists(versionTextKey(bookId, oldVersionId))).toBe(false);
@@ -104,6 +107,7 @@ describe("重新整理", () => {
     const bad = [{ ...v.chapters[0]!, byteLength: 9999 }];
     expect((await post(`/api/admin/books/${bookId}/versions`, { versionId: missing, options: newOptions, chapters: v.chapters })).status).toBe(400);
     expect((await post(`/api/admin/books/${bookId}/versions`, { versionId: v.versionId, options: newOptions, chapters: bad })).status).toBe(400);
+    expect((await post(`/api/admin/books/${bookId}/versions`, { versionId: v.versionId, options: newOptions, chapters: [{ ...v.chapters[0]!, notice: "yes" }] })).status).toBe(400);
     expect((await post(`/api/admin/books/${bookId}/versions`, { versionId: v.versionId, options: { bad: 1 }, chapters: v.chapters })).status).toBe(400);
     expect((await post(`/api/admin/books/${crypto.randomUUID()}/versions`, { versionId: v.versionId, options: newOptions, chapters: v.chapters })).status).toBe(404);
 

@@ -35,6 +35,8 @@ export function validateChapterIndex(chapters: unknown, textByteLength: number):
     if (c.volume !== undefined && c.volume !== null && (typeof c.volume !== "string" || !c.volume.trim() || c.volume.length > MAX_TITLE_LENGTH)) {
       fail(i, `volume must be null or a non-empty string of at most ${MAX_TITLE_LENGTH} characters`);
     }
+    // 早期客户端不提交作者公告，视为不是公告。
+    if (c.notice !== undefined && typeof c.notice !== "boolean") fail(i, "notice must be a boolean");
     if (!isCount(c.byteOffset) || !isCount(c.byteLength)) {
       fail(i, "byteOffset and byteLength must be non-negative integers");
       return;
