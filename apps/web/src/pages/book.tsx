@@ -6,7 +6,7 @@ import { ChapterBrowser, ChapterText } from "@/components/chapter-browser";
 import { BookMetadataPanel } from "@/components/book-metadata";
 import { STEPS } from "@/components/process-options-form";
 import { Button } from "@/components/ui/button";
-import { isAdvisory, itemKind, reviewNumbers } from "@/lib/number-review";
+import { isAdvisory, itemKind, reviewNumbers, type ReviewKind } from "@/lib/number-review";
 
 const route = getRouteApi("/owner/books/$bookId");
 
@@ -68,7 +68,7 @@ function NumberNotice({
   const advisory = reviewNumbers(chapters, { numberIgnores: options.numberIgnores ?? [], numberFixes: options.numberFixes ?? [] }).filter(
     (i) => i.status === "pending" && isAdvisory(i),
   );
-  const count = (kind: string) => advisory.filter((i) => itemKind(i) === kind).length;
+  const count = (kind: ReviewKind) => advisory.filter((i) => itemKind(i) === kind).length;
   const parts = [
     [count("missing"), "缺号"],
     [count("duplicate"), "重复编号"],

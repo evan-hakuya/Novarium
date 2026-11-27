@@ -25,7 +25,7 @@ export type NumberAnomaly = { key: string; section: number } & (
   /** 乱序：章节不在分卷内按序号递增的最长序列上，位置需要调整。 */
   | { kind: "outOfOrder"; order: number; number: number; title: string }
   /**
-   * 编号笔误：相邻两章都是第 number 章，下一章是 number + 2，缺 number + 1。
+   * 序号笔误：相邻两章都是第 number 章，下一章是 number + 2，缺 number + 1。
    * 第二章（order）应为 number + 1；first 是第一章。取代对应的重复编号与缺号。
    */
   | { kind: "numberTypo"; order: number; first: number; number: number; title: string }
@@ -33,7 +33,7 @@ export type NumberAnomaly = { key: string; section: number } & (
 
 export type NumberAnomalyKind = NumberAnomaly["kind"];
 
-/** 可以由系统修复的异常类型：乱序章节可以移动到按序号应在的位置；编号笔误可以改写标题中的序号。 */
+/** 可以由系统修复的异常类型：乱序章节可以移动到按序号应在的位置；序号笔误可以改写标题中的序号。 */
 export const isFixable = (a: NumberAnomaly) => a.kind === "outOfOrder" || a.kind === "numberTypo";
 /** 系统已自动处理、不需要所有者操作的异常类型。 */
 export const needsNoAction = (a: NumberAnomaly) => a.kind === "sectionReset";
@@ -159,13 +159,13 @@ export function findNumberAnomalies(chapters: readonly NumberedChapter[]): Numbe
     const byNumber = new Map<number, number[]>();
     for (const c of section) byNumber.set(c.number, [...(byNumber.get(c.number) ?? []), c.order]);
 
-    // 编号笔误：只有这两章用了 n，二者在分卷的有序号章节中相邻，下一章是 n + 2，且标题可以改写。
+    // 序号笔误：只有这两章用了 n，二者在分卷的有序号章节中相邻，下一章是 n + 2，分卷中没有 n + 1，且标题可以改写。
     const typos = new Set<number>();
     section.forEach((c, i) => {
       const prev = section[i - 1];
       const n = c.number;
       if (prev?.number !== n || byNumber.get(n)!.length !== 2 || section[i + 1]?.number !== n + 2) return;
-      if (!renumberTitle(c.title, n + 1)) return;
+      if (byNumber.has(n + 1) || !renumberTitle(c.title, n + 1)) return;
       typos.add(n);
       anomalies.push({ key: fixKey("numberTypo", s, n, c.title), section: s, kind: "numberTypo", order: c.order, first: prev.order, number: n, title: c.title });
     });

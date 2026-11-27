@@ -42,9 +42,11 @@ export function reviewNumbers(
   for (const key of options.numberFixes) {
     const parsed = parseFixKey(key);
     if (!parsed || current.has(key)) continue;
-    // 序号笔误修复后标题已改写为 n+1。
-    const title = parsed.kind === "numberTypo" ? renumberTitle(parsed.title, parsed.number + 1) : parsed.title;
-    const chapter = chapters.find((c) => c.title === title);
+    // 序号笔误修复后标题与序号已改为 n+1。
+    const typo = parsed.kind === "numberTypo";
+    const number = typo ? parsed.number + 1 : parsed.number;
+    const title = typo ? renumberTitle(parsed.title, number) : parsed.title;
+    const chapter = chapters.find((c) => c.number === number && c.title === title);
     if (chapter) items.push({ key, status: "fixed", kind: parsed.kind, number: parsed.number, title: parsed.title, order: chapter.order });
   }
   return items;

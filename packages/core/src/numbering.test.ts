@@ -39,7 +39,7 @@ describe("findNumberAnomalies", () => {
     expect(parseFixKey("missing|0|3|3")).toBeNull();
   });
 
-  it("相邻两个第 n 章、下一章是 n+2 时是编号笔误，取代对应的重复编号与缺号", () => {
+  it("相邻两个第 n 章、下一章是 n+2 时是序号笔误，取代对应的重复编号与缺号", () => {
     expect(findNumberAnomalies(chapters([5, 6, 6, 8, 9]))).toEqual([
       { key: "numberTypo|0|6|第6章", section: 0, kind: "numberTypo", order: 2, first: 1, number: 6, title: "第6章" },
     ]);
@@ -47,13 +47,20 @@ describe("findNumberAnomalies", () => {
     expect(findNumberAnomalies(chapters([6, null, 6, 8])).map((a) => a.kind)).toEqual(["numberTypo"]);
   });
 
-  it("拆成上下篇（不缺号）、不相邻、出现三次或下一章不是 n+2 时不是编号笔误", () => {
+  it("拆成上下篇（不缺号）、不相邻、出现三次、下一章不是 n+2 或 n+1 在别处时不是序号笔误", () => {
     const kinds = (numbers: (number | null)[]) => findNumberAnomalies(chapters(numbers)).map((a) => a.kind);
     expect(kinds([5, 6, 6, 7])).toEqual(["duplicate"]);
     expect(kinds([6, 5, 6, 8])).not.toContain("numberTypo");
     expect(kinds([6, 6, 6, 8])).toEqual(["missing", "duplicate"]);
     expect(kinds([6, 6, 9])).toEqual(["missing", "duplicate"]);
     expect(kinds([5, 6, 6])).toEqual(["duplicate"]);
+    // 第 7 章只是乱序：修复成第 7 章会出现两个第 7 章。
+    expect(kinds([5, 6, 6, 8, 7])).not.toContain("numberTypo");
+  });
+
+  it("标题序号不能按原写法改写（大写数字）时，仍报重复编号与缺号", () => {
+    const list = ["第伍章", "第陆章 甲", "第陆章 乙", "第捌章"].map((title, order) => ({ order, number: [5, 6, 6, 8][order]!, title }));
+    expect(findNumberAnomalies(list).map((a) => a.kind)).toEqual(["missing", "duplicate"]);
   });
 });
 

@@ -247,7 +247,7 @@ function chapterSegments(lines: string[], options: SplitOptions): Segment[] {
 }
 
 /**
- * 按所有者选择的修复调整正文，返回调整后的正文：先改写编号笔误章节标题中的序号，
+ * 按所有者选择的修复调整正文，返回调整后的正文：先改写序号笔误章节标题中的序号，
  * 再调整乱序章节的位置（规则见 applyNumberFixes）。
  */
 export function applyNumberFixesToText(text: string, options: SplitOptions, fixes: readonly string[]): string {
@@ -260,7 +260,9 @@ export function applyNumberFixesToText(text: string, options: SplitOptions, fixe
   for (const a of typos) {
     if (a.kind !== "numberTypo") continue;
     const at = segments[a.order]!.titleLine!;
-    lines[at] = lines[at]!.replace(a.title, renumberTitle(a.title, a.number + 1)!);
+    const next = renumberTitle(a.title, a.number + 1)!;
+    // 用函数替换：标题中的「$&」等不会被当作替换模式。
+    lines[at] = lines[at]!.replace(a.title, () => next);
   }
   if (typos.length > 0) segments = chapterSegments(lines, options);
   const order = applyNumberFixes(asChapters(segments), fixes);
