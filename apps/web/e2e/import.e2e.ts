@@ -207,3 +207,26 @@ test("volumes fold their chapters and unfold on a jump", async ({ page }) => {
   await page.goto(`${new URL(page.url()).pathname}/reprocess`);
   await expect(page.getByText("当前 4 章 · 2 卷 → 新版本 4 章 · 2 卷 · 整理后", { exact: false })).toBeVisible({ timeout: 60_000 });
 });
+
+test("a chapter number typo is fixed by rewriting the title number", async ({ page }) => {
+  // 两个第六章、没有第七章：第二个第六章应为第七章。每章两行正文，避免清洗合并重复标题。
+  const body = ["　　第一段。", "　　第二段。"];
+  const text = ["第五章 开端", ...body, "第六章 清晨", ...body, "第六章 选择", ...body, "第八章 结尾", ...body].join("\n");
+  await login(page);
+  await page.goto("/import");
+  await page.locator("#file").setInputFiles({ name: "笔误测试.txt", mimeType: "text/plain", buffer: Buffer.from(text) });
+  await expect(page.getByText("4 章 · 整理后")).toBeVisible({ timeout: 60_000 });
+
+  const panel = page.locator("section").filter({ hasText: "章节异常" });
+  await expect(panel.getByRole("tab", { name: "序号笔误 1" })).toBeVisible();
+  await expect(panel.getByRole("tab", { name: /^缺号/ })).toHaveCount(0);
+  await expect(panel.getByRole("tab", { name: /^重复编号/ })).toHaveCount(0);
+  // 只提示，不挡住导入。
+  await expect(page.getByRole("button", { name: "导入这本书", exact: true })).toBeEnabled();
+
+  await panel.getByRole("button", { name: "修复", exact: true }).click();
+  const list = page.locator("ol").filter({ has: page.locator("[data-order]") });
+  await expect(list.getByRole("button", { name: "第七章 选择", exact: true })).toBeVisible({ timeout: 30_000 });
+  await panel.getByRole("tab", { name: /^已修复/ }).click();
+  await expect(panel.getByText("序号笔误：「第六章 选择」已改为第 7 章")).toBeVisible();
+});

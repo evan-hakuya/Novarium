@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyNumberFixes, findNumberAnomalies, parseOutOfOrderKey } from "./numbering";
+import { applyNumberFixes, findNumberAnomalies, parseFixKey, renumberTitle, toChineseNumeral } from "./numbering";
 import { DEFAULT_PROCESS_OPTIONS } from "./options";
 import { processManuscript } from "./process";
 
@@ -33,9 +33,65 @@ describe("findNumberAnomalies", () => {
     ]);
   });
 
-  it("乱序 key 可以读回序号与标题", () => {
-    expect(parseOutOfOrderKey("outOfOrder|2|7|第七章 a|b")).toEqual({ section: 2, number: 7, title: "第七章 a|b" });
-    expect(parseOutOfOrderKey("missing|0|3|3")).toBeNull();
+  it("可修复异常的 key 可以读回类型、序号与标题", () => {
+    expect(parseFixKey("outOfOrder|2|7|第七章 a|b")).toEqual({ kind: "outOfOrder", section: 2, number: 7, title: "第七章 a|b" });
+    expect(parseFixKey("numberTypo|0|6|第6章")).toEqual({ kind: "numberTypo", section: 0, number: 6, title: "第6章" });
+    expect(parseFixKey("missing|0|3|3")).toBeNull();
+  });
+
+  it("相邻两个第 n 章、下一章是 n+2 时是序号笔误，取代对应的重复编号与缺号", () => {
+    expect(findNumberAnomalies(chapters([5, 6, 6, 8, 9]))).toEqual([
+      { key: "numberTypo|0|6|第6章", section: 0, kind: "numberTypo", order: 2, first: 1, number: 6, title: "第6章" },
+    ]);
+    // 无序号章节夹在中间也算相邻。
+    expect(findNumberAnomalies(chapters([6, null, 6, 8])).map((a) => a.kind)).toEqual(["numberTypo"]);
+  });
+
+  it("拆成上下篇（不缺号）、不相邻、出现三次、下一章不是 n+2 或 n+1 在别处时不是序号笔误", () => {
+    const kinds = (numbers: (number | null)[]) => findNumberAnomalies(chapters(numbers)).map((a) => a.kind);
+    expect(kinds([5, 6, 6, 7])).toEqual(["duplicate"]);
+    expect(kinds([6, 5, 6, 8])).not.toContain("numberTypo");
+    expect(kinds([6, 6, 6, 8])).toEqual(["missing", "duplicate"]);
+    expect(kinds([6, 6, 9])).toEqual(["missing", "duplicate"]);
+    expect(kinds([5, 6, 6])).toEqual(["duplicate"]);
+    // 第 7 章只是乱序：修复成第 7 章会出现两个第 7 章。
+    expect(kinds([5, 6, 6, 8, 7])).not.toContain("numberTypo");
+  });
+
+  it("标题序号不能按原写法改写（大写数字）时，仍报重复编号与缺号", () => {
+    const list = ["第伍章", "第陆章 甲", "第陆章 乙", "第捌章"].map((title, order) => ({ order, number: [5, 6, 6, 8][order]!, title }));
+    expect(findNumberAnomalies(list).map((a) => a.kind)).toEqual(["missing", "duplicate"]);
+  });
+});
+
+describe("renumberTitle", () => {
+  it("保持原来的数字写法改写序号", () => {
+    expect(renumberTitle("第六章 选择（周一求推荐票）", 7)).toBe("第七章 选择（周一求推荐票）");
+    expect(renumberTitle("第二百三十章 三个问题", 231)).toBe("第二百三十一章 三个问题");
+    expect(renumberTitle("第一千二百零一章 也姓陈", 1202)).toBe("第一千二百零二章 也姓陈");
+    expect(renumberTitle("第230章 三个问题", 231)).toBe("第231章 三个问题");
+    expect(renumberTitle("第九章 雨", 10)).toBe("第十章 雨");
+    // 大写数字不改写。
+    expect(renumberTitle("第陆章 选择", 7)).toBeNull();
+  });
+
+  it("中文数字格式", () => {
+    expect([10, 12, 20, 101, 110, 1010, 10001, 12000].map(toChineseNumeral)).toEqual([
+      "十", "十二", "二十", "一百零一", "一百一十", "一千零一十", "一万零一", "一万二千",
+    ]);
+  });
+});
+
+describe("numberTypo fix", () => {
+  it("修复后改写标题序号，章节变为第 n+1 章，不再有异常", async () => {
+    // 每章两行正文：两个同号标题只隔一行时，清洗会把它们当作重复标题合并。
+    const body = ["第一段。", "第二段。"];
+    const manuscript = ["第五章 开端", ...body, "第六章 清晨", ...body, "第六章 选择", ...body, "第八章 结尾", ...body].join("\n");
+    const book = await processManuscript(new TextEncoder().encode(manuscript), { ...DEFAULT_PROCESS_OPTIONS, numberFixes: ["numberTypo|0|6|第六章 选择"] });
+    expect(book.chapters.map((c) => [c.title, c.number])).toEqual([
+      ["第五章 开端", 5], ["第六章 清晨", 6], ["第七章 选择", 7], ["第八章 结尾", 8],
+    ]);
+    expect(findNumberAnomalies(book.chapters)).toEqual([]);
   });
 
   it("按卷分别检查：卷内序号从 1 开始不算异常，也不是推断的分卷边界", () => {
