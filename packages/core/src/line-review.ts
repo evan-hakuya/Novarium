@@ -1,6 +1,6 @@
 // AI 复核（ADR 0007）用到的行：候选行的识别与行级修正的记法。只看整理后的正文，不调用 AI。
 
-import { NOTICE_WORDS } from "./notice-words";
+import { LEAVE_WORDS, NOTICE_WORDS } from "./notice-words";
 
 /** 一行的类别。notice 是作者公告的标题：单独成章，不带序号（GLOSSARY「作者公告」）。 */
 export type LineKind = "chapter" | "volume" | "notice" | "body";
@@ -181,10 +181,10 @@ function looksLikeTitle(text: string): boolean {
 const isShortLine = (text: string) => [...text].length <= SHORT_LINE_CHARS && titleShaped(text);
 
 /**
- * 疑似作者公告的独立短行，例如「生病了，请假一天」。清洗时它保持单独成行，不与下一行正文合并，
- * 这样它会成为候选行，交给 AI 判断；规则仍判为正文。
+ * 疑似作者公告的独立短行，例如「生病了，请假一天」。清洗时它保持单独成行（单独成段、没有缩进），
+ * 不与下一行正文合并，这样它会成为候选行，交给 AI 判断；规则仍判为正文。
  */
 export const isNoticeLine = (line: string) => {
   const text = line.trim();
-  return isShortLine(text) && NOTICE_WORDS.test(text);
+  return isShortLine(text) && LEAVE_WORDS.test(text);
 };

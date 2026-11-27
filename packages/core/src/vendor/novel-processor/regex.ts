@@ -70,13 +70,12 @@ const innerCommaRegex = /[，,]/;
 // 电影，票价三十起步。"、编号清单体）照旧按正文句处理。
 const sectionLabelRegex = /^(?:序章|楔子|正文|终章|末章|后记|後记|尾声|番外|引子|[序前]言|卷首语|扉页|跋)/u;
 
-// 作者公告标题，见 notice-words.ts。不带序号（见 extractChapterOrder）。
-const noticeTitleRegex = NOTICE_TITLE;
+// 作者公告标题见 notice-words.ts 的 NOTICE_TITLE。不带序号（见 extractChapterOrder）。
 
 /** 这一行是不是作者公告的标题。 */
 export const isNoticeTitle = (line: string): boolean => {
   const t = line.trim();
-  return [...t].length <= CHAPTER_TITLE_MAX_LEN && noticeTitleRegex.test(t);
+  return [...t].length <= CHAPTER_TITLE_MAX_LEN && NOTICE_TITLE.test(t);
 };
 
 /**
@@ -101,7 +100,7 @@ export const detectChapterUnit = (lines: string[]): string | null => {
     const head = t.match(chapterHeadRegex);
     if (!head) continue;
     // 「第一部总结兼请假」是作者公告，不为「部」投票。
-    if (noticeTitleRegex.test(t)) continue;
+    if (NOTICE_TITLE.test(t)) continue;
     // 句子样的不参与投票（它可能是正文，不是单位）。「章」要参与投票：
     // 竞技文里干净的「第N章」961 条、正文句的「第N节」里不带句号的也有 70 余条，
     // 不把章算进去就会被那 70 条把单位投成「节」，一条正文都判不掉了。
@@ -129,7 +128,7 @@ export const isChapterTitleLine = (line: string, unit?: string | null): boolean 
   // 「第三章节」是正文中的复合词，不是「第三章」标题后接正文。
   if (/^第?\s*[〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟\d]+\s*章节/.test(t)) return false;
   if ([...t].length > CHAPTER_TITLE_MAX_LEN) return false;
-  if (noticeTitleRegex.test(t)) return true;
+  if (NOTICE_TITLE.test(t)) return true;
   if (!chapterTitleRegex.test(t) && !numberTitleRegex.test(t)) return false;
   const head = t.match(chapterHeadRegex);
   // 裸「一部……」这类句子不能因为数字与章节单位相邻而成为标题。
