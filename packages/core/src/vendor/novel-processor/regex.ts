@@ -1,4 +1,6 @@
 // 移植自 rockbenben/novel-processor（MIT，© 2026 rockbenben），见同目录 README.md 与 LICENSE。
+import { NOTICE_TITLE } from "../../notice-words";
+
 // 标点符号结尾的正则表达式
 export const punctuationEndRegex = /(?:[。？！…”"」\]】)）※]|\.{3,}|-{3,}|—{3,}|={3,}|＝{3,})$/;
 // 以特殊字符开头的任意行，未包含括号 （(
@@ -68,10 +70,8 @@ const innerCommaRegex = /[，,]/;
 // 电影，票价三十起步。"、编号清单体）照旧按正文句处理。
 const sectionLabelRegex = /^(?:序章|楔子|正文|终章|末章|后记|後记|尾声|番外|引子|[序前]言|卷首语|扉页|跋)/u;
 
-// 作者公告标题：「第一部总结兼请假（求月票）」「上架感言」「完本感言」。
-// 它们单独成章，但不是正文章节，不带序号（见 extractChapterOrder），也不开始分卷。
-const noticeTitleRegex =
-  /^(?:第\s*[〇零一二三四五六七八九十百千万两壹贰叁肆伍陆柒捌玖拾佰仟萬\d]{1,10}\s*[部卷]\s*(?:总结|感言)[^，,。！？!?：:]*|(?:上架|完本|完结|入[vV]|[〇零一二三四五六七八九十百千万两\d]+万?字)感言(?:[（(][^）)]*[）)])?)$/;
+// 作者公告标题，见 notice-words.ts。不带序号（见 extractChapterOrder）。
+const noticeTitleRegex = NOTICE_TITLE;
 
 /** 这一行是不是作者公告的标题。 */
 export const isNoticeTitle = (line: string): boolean => {

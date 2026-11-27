@@ -1,5 +1,5 @@
 import type { ProcessOptions } from "./options";
-import { lineOverrideMap } from "./line-review";
+import { isNoticeLine, lineOverrideMap } from "./line-review";
 import { customTitleMatcher, isVolumeTitleLine } from "./split";
 import { formatNovelText } from "./vendor/novel-processor/novel";
 
@@ -22,7 +22,7 @@ export function cleanText(text: string, options: ProcessOptions): Promise<string
     removeDuplicateLines: options.removeDuplicateLines,
     enableIndent: options.indent,
     specialStart: options.specialStart,
-    // 本书正则命中的标题行与卷标题行不与正文合并，否则分章时找不到它们。
-    isExtraTitleLine: (line) => isVolumeTitleLine(line) || !!custom?.(line) || forcedTitles.has(line.trim()),
+    // 本书正则命中的标题行与卷标题行不与正文合并，否则分章时找不到它们。疑似作者公告的短行也不合并，留给 AI 判断。
+    isExtraTitleLine: (line) => isVolumeTitleLine(line) || !!custom?.(line) || forcedTitles.has(line.trim()) || isNoticeLine(line),
   });
 }
