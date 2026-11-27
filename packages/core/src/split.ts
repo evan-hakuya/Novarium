@@ -77,7 +77,7 @@ export function splitChapters(text: string, options: SplitOptions): ChapterDraft
       title: segment.title,
       number: segment.number,
       volume: segment.volume,
-      ...(segment.notice && { notice: true }),
+      notice: !!segment.notice,
       ...bodyRange(bodyFrom, segment.to),
     });
   }

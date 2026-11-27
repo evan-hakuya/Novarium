@@ -9,8 +9,8 @@ export interface ChapterDraft {
   number: number | null;
   /** 所属卷的标题；没有卷的书为 null。 */
   volume: string | null;
-  /** 作者公告（GLOSSARY「作者公告」）。只在整理预览中出现：服务端不保存它，书详情页按标题判断。 */
-  notice?: boolean;
+  /** 作者公告（GLOSSARY「作者公告」）。早期客户端不提交，服务端视为 false。 */
+  notice: boolean;
   /** 正文（不含标题行）在整理后正文中的起始字节。 */
   byteOffset: number;
   /** 正文的字节长度；空章节为 0。 */

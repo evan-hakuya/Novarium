@@ -104,6 +104,8 @@ export const chapters = sqliteTable(
     byteLength: integer("byte_length").notNull(),
     // 所属卷名；没有卷时为 null。
     volume: text("volume"),
+    // 作者公告（GLOSSARY「作者公告」）。
+    notice: integer("notice", { mode: "boolean" }).notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.versionId, t.ord] })],
 );

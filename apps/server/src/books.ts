@@ -157,6 +157,7 @@ export function createBookRoutes() {
         number: chapters.number,
         byteLength: chapters.byteLength,
         volume: chapters.volume,
+        notice: chapters.notice,
       })
       .from(chapters)
       .where(eq(chapters.versionId, row.version.id))
@@ -277,6 +278,7 @@ interface IndexEntry {
   byteOffset: number;
   byteLength: number;
   volume?: string | null;
+  notice?: boolean;
 }
 
 export type BatchQuery = BatchItem<"sqlite">;
@@ -291,7 +293,8 @@ function insertChapters(db: AppDeps["db"], versionId: string, index: IndexEntry[
            json_extract(value, '$.number'),
            json_extract(value, '$.byteOffset'),
            json_extract(value, '$.byteLength'),
-           json_extract(value, '$.volume')
+           json_extract(value, '$.volume'),
+           coalesce(json_extract(value, '$.notice'), 0)
     from json_each(${JSON.stringify(index)})`);
 }
 

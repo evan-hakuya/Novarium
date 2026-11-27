@@ -121,4 +121,6 @@ test("imports a large manuscript", async ({ page }) => {
   await expect(page).toHaveURL(/\/books\/[^/]+$/, { timeout: 60_000 });
   await expect(page.getByText("E2E 测试书").first()).toBeVisible();
   await expect(page.getByText("当前版本有 1 处缺号未忽略")).toBeVisible();
+  // 作者公告随章节索引保存，书详情页同样标出。
+  await expect(page.getByRole("button", { name: "上架感言 作者公告", exact: true })).toBeVisible();
 });
