@@ -190,7 +190,7 @@ export function findCandidateLines(text: string, options: SplitOptions): Candida
     if (a.kind === "missing") anomalous.add(a.after).add(a.after + 1);
     else if (a.kind === "duplicate") a.orders.forEach((o) => anomalous.add(o));
     else if (a.kind === "outOfOrder") anomalous.add(a.order);
-    else if (a.kind === "numberTypo") anomalous.add(a.first).add(a.order);
+    else if (a.kind === "numberTypo") anomalous.add(a.previous).add(a.order);
   }
   const bytes = encoder.encode(text);
   const decoder = new TextDecoder();
@@ -260,7 +260,7 @@ export function applyNumberFixesToText(text: string, options: SplitOptions, fixe
   for (const a of typos) {
     if (a.kind !== "numberTypo") continue;
     const at = segments[a.order]!.titleLine!;
-    const next = renumberTitle(a.title, a.number + 1)!;
+    const next = renumberTitle(a.title, a.expected)!;
     // 用函数替换：标题中的「$&」等不会被当作替换模式。
     lines[at] = lines[at]!.replace(a.title, () => next);
   }

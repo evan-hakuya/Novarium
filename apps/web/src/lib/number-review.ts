@@ -16,7 +16,7 @@ export type ReviewStatus = "pending" | "noAction" | "ignored" | "fixed";
 export type NumberReviewItem =
   | { key: string; status: "pending" | "noAction" | "ignored"; anomaly: NumberAnomaly }
   /**
-   * 已修复的乱序或序号笔误；修复后它不再是异常。number 与 title 是修复前的序号与标题，
+   * 已修复的乱序或序号笔误；修复后它不再是异常。title 是修复前的标题，number 是修复后的序号，
    * order 是这一章在修复后的阅读顺序，找不到时为 null。
    */
   | { key: string; status: "fixed"; kind: "outOfOrder" | "numberTypo"; number: number; title: string; order: number | null };
@@ -42,11 +42,9 @@ export function reviewNumbers(
   for (const key of options.numberFixes) {
     const parsed = parseFixKey(key);
     if (!parsed || current.has(key)) continue;
-    // 序号笔误修复后标题与序号已改为 n+1。
-    const typo = parsed.kind === "numberTypo";
-    const number = typo ? parsed.number + 1 : parsed.number;
-    const title = typo ? renumberTitle(parsed.title, number) : parsed.title;
-    const chapter = chapters.find((c) => c.number === number && c.title === title);
+    // 序号笔误的 key 记的是改正后的序号，修复后标题也已改写为这个序号。
+    const title = parsed.kind === "numberTypo" ? renumberTitle(parsed.title, parsed.number) : parsed.title;
+    const chapter = chapters.find((c) => c.number === parsed.number && c.title === title);
     if (chapter) items.push({ key, status: "fixed", kind: parsed.kind, number: parsed.number, title: parsed.title, order: chapter.order });
   }
   return items;
