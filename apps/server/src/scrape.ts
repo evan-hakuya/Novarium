@@ -39,8 +39,8 @@ export interface ScrapedBook extends ScrapeCandidate {
   authorEn: string | null;
   /** 源站最后更新章节的时间，ISO 8601。 */
   sourceUpdatedAt: string | null;
-  /** 平台标记，例如 { key: "signed", label: "Signed", value: "Signed" }。key 的取值见 docs/agents/daosearch.md。 */
-  facets: { key: string; label: string; value: string }[];
+  /** 平台标记，例如 { key: "signed", label: "Signed", value: "Signed", raw: "true" }。key 的取值见 docs/agents/daosearch.md。 */
+  facets: { key: string; label: string; value: string; raw?: string }[];
   mature: boolean | null;
   /** 这本书在源站的页面（https）。 */
   sourceUrl: string | null;

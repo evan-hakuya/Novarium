@@ -49,7 +49,7 @@ interface DaoSearchBook extends DaoSearchResult {
   subgenre?: Text | null;
   other_names?: { name: string | null; name_translated: string | null }[] | null;
   updated_at?: string | null;
-  facets?: { key: string; label: string; value_label: string }[] | null;
+  facets?: { key: string; label: string; value?: unknown; value_label: string }[] | null;
   mature?: boolean;
   source_url?: string | null;
   also_on?: { source: string; url: string }[] | null;
@@ -161,7 +161,9 @@ function toBook(book: DaoSearchBook, info: PlatformInfo | null): ScrapedBook {
     aliases,
     authorEn: book.author?.en ?? null,
     sourceUpdatedAt: book.updated_at ?? null,
-    facets: (book.facets ?? []).filter((f) => f.label && f.value_label).map((f) => ({ key: f.key, label: f.label, value: f.value_label })),
+    facets: (book.facets ?? [])
+      .filter((f) => f.label && f.value_label)
+      .map((f) => ({ key: f.key, label: f.label, value: f.value_label, ...(typeof f.value === "string" && f.value ? { raw: f.value } : {}) })),
     mature: typeof book.mature === "boolean" ? book.mature : null,
     sourceUrl: https(book.source_url),
     alsoOn: (book.also_on ?? []).flatMap((e) => {

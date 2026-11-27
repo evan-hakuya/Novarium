@@ -1,4 +1,5 @@
 import type { ChapterDraft, ProcessOptions } from "@novarium/core";
+import type { Facet } from "./scrape";
 
 /** 单个上传文件的上限，与服务端一致。 */
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -44,7 +45,7 @@ export interface BookDescription {
   sourceWordCount: number | null;
   released: Released | null;
   sourceUpdatedAt: string | null;
-  facets: { key: string; label: string; value: string }[] | null;
+  facets: Facet[] | null;
   mature: boolean | null;
   sourceUrl: string | null;
   alsoOn: { platform: string; url: string }[] | null;

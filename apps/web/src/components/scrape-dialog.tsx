@@ -324,8 +324,8 @@ function ScrapeCompare({ target, onApply, onDone, scraped, rescrape, onBack }: D
     {
       field: "facets",
       label: "平台标记",
-      current: target.facets?.map(formatFacet).join("、"),
-      next: scraped.facets.map(formatFacet).join("、"),
+      current: target.facets?.map(formatFacet).filter(Boolean).join("、"),
+      next: scraped.facets.map(formatFacet).filter(Boolean).join("、"),
     },
     { field: "mature", label: "成人向", current: matureText(target.mature), next: matureText(scraped.mature) },
     {

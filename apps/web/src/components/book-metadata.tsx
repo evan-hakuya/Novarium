@@ -13,7 +13,7 @@ import {
   type BookDetail,
   type BookMetadata,
 } from "@/api/books";
-import { applyScrape, fetchScrapeStatus, refPlatform, scrapeStatusQueryKey } from "@/api/scrape";
+import { applyScrape, facetText, fetchScrapeStatus, refPlatform, scrapeStatusQueryKey } from "@/api/scrape";
 import { BookDescriptionView } from "@/components/book-description";
 import { BookSnapshotView } from "@/components/book-snapshot";
 import { ChipInput } from "@/components/chip-input";
@@ -69,6 +69,8 @@ export function BookMetadataPanel({ book }: { book: Book }) {
     },
   });
   const error = [save, cover, uncover, remove].find((m) => m.isError)?.error;
+  // 首发月份与描述中的「首发日期」重复，DaoSearch 书页的标签区也不显示它。
+  const facets = (book.facets ?? []).filter((f) => f.key !== "first_published");
 
   function onCoverFile(file: File | undefined) {
     if (!file) return;
@@ -192,6 +194,25 @@ export function BookMetadataPanel({ book }: { book: Book }) {
           </>
         ) : (
           <>
+            {facets.length > 0 && (
+              // 平台标记：源站给的特殊标签，排在标签上方，与 DaoSearch 书页一致。
+              <ul className="flex flex-wrap gap-1.5" aria-label="平台标记">
+                {facets.map((facet) => {
+                  const text = facetText(facet);
+                  if (!text) return null;
+                  const { name, value } = text;
+                  return (
+                    // 同一个 key 可能有多个值，例如多个主题。
+                    <li key={`${facet.key}:${facet.raw ?? facet.value}`}>
+                      <Badge variant="outline">
+                        {name && <span className="font-normal text-muted-foreground">{name}</span>}
+                        <span className="font-semibold">{value}</span>
+                      </Badge>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {book.tags.length > 0 ? (
                 book.tags.map((tag) => (
