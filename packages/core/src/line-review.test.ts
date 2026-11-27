@@ -152,6 +152,18 @@ describe("候选行", () => {
     expect(splitChapters(book, { chapterPattern: null }).every((c) => !c.volume)).toBe(true);
   });
 
+  it("超过章节字数中位数 3 倍的章节中，像标题的短行是可疑的候选行；正常章节中的不是", () => {
+    const body = (n: number) => Array.from({ length: n }, () => "　　这是一段正文。");
+    const book = [
+      "第一章 开端", ...body(10), "风声", ...body(10),
+      "第二章 继续", ...body(20),
+      "第三章 结尾", ...body(20), "海边的一天", ...body(40), "海边的黄昏", ...body(40),
+      "第四章 尾声", ...body(20),
+    ].join("\n");
+    const marked = findCandidateLines(book, { chapterPattern: null }).filter((c) => c.rule === "body");
+    expect(marked.map((c) => [c.text, c.suspicious])).toEqual([["海边的一天", true], ["海边的黄昏", true]]);
+  });
+
   it("整理时没有结尾标点的番外短标题不与下一行正文合并，成为可疑的候选行", async () => {
     const manuscript = "第一章 开端\n他推开门。\n\n个人番外篇 : 与你相配\n\n　　伦敦的音乐厅座无虚席。\n";
     const book = await processManuscript(utf8(manuscript), { ...DEFAULT_PROCESS_OPTIONS });

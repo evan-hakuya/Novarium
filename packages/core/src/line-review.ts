@@ -96,11 +96,13 @@ const encoder = new TextEncoder();
  * 候选行：规则已识别为章节或卷的行，以及规则未识别、但较短且含关键词的行（GLOSSARY「候选行」）。
  * ruleKinds 是规则给出的标题行类别（行下标 → 类别）。
  * firstChapters 是规则判为第 1 章的标题行下标（含序号重置）：它前面的短行可能是规则漏判的卷名，也作为候选行。
+ * longRanges 是超长章节正文的字节范围 [起, 止)：其中像标题的短行可能是规则漏判的标题（如不带「番外」的番外），也作为候选行。
  */
 export function candidateLines(
   lines: readonly string[],
   ruleKinds: ReadonlyMap<number, TitleKind>,
   firstChapters: Iterable<number> = [],
+  longRanges: readonly (readonly [number, number])[] = [],
 ): CandidateLine[] {
   const ids = lineIds(lines);
   const leads = new Set<number>();
@@ -117,7 +119,8 @@ export function candidateLines(
     if (!id) return;
     const text = line.trim();
     const rule = ruleKinds.get(i) ?? "body";
-    if (rule === "body" && (isPostscript(text) || (!looksLikeTitle(text) && !leads.has(i)))) return;
+    const inLong = () => isShortLine(text) && longRanges.some(([from, to]) => byteOffset >= from && byteOffset < to);
+    if (rule === "body" && (isPostscript(text) || (!looksLikeTitle(text) && !leads.has(i) && !inLong()))) return;
     let k = i + 1;
     while (k < lines.length && !lines[k]!.trim()) k++;
     candidates.push({
@@ -138,6 +141,11 @@ export function candidateLines(
 
 /** 章节正文不到这么多字时，它的标题算可疑：请假条、感言这类作者公告通常很短。 */
 export const SHORT_CHAPTER_CHARS = 500;
+/**
+ * 正文字数超过本书章节字数中位数这么多倍的章节是超长章节：可能有规则漏判的标题，把后面几章并了进来。
+ * 用中位数而不是平均值：超长章节本身会拉高平均值。
+ */
+export const LONG_CHAPTER_FACTOR = 3;
 /** 一个章节在可疑判断中用到的信息。 */
 export interface ChapterSignal {
   title: string;
