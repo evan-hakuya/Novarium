@@ -170,3 +170,32 @@ test("an AI review item jumps to and highlights its line", async ({ page }) => {
   await expect(article.getByText(/第 1 \/ \d 页/)).toBeVisible();
   await expect(mark).toHaveCount(0);
 });
+
+test("volumes fold their chapters and unfold on a jump", async ({ page }) => {
+  // 第二卷缺第 2 章，异常面板可以跳到「第1章 雨夜」。
+  const text = ["第一卷 风起", "第1章 开端", "　　正文。", "第2章 继续", "　　正文。", "第二卷 云涌", "第1章 雨夜", "　　正文。", "第3章 天明", "　　正文。"].join("\n");
+  await login(page);
+  await page.goto("/import");
+  await page.locator("#file").setInputFiles({ name: "分卷测试.txt", mimeType: "text/plain", buffer: Buffer.from(text) });
+  await expect(page.getByText("4 章 · 整理后")).toBeVisible({ timeout: 60_000 });
+
+  const list = page.locator("ol").filter({ has: page.locator("[data-order]") });
+  // 「第1章 雨夜」在缺号前，列表中带异常提示，按阅读顺序定位。
+  const rainyNight = list.locator('button[data-order="2"]');
+  const volume = list.getByRole("button", { name: /第二卷 云涌/ });
+  await expect(volume).toHaveAttribute("aria-expanded", "true");
+  await expect(volume).toContainText("2 章");
+  await volume.click();
+  await expect(volume).toHaveAttribute("aria-expanded", "false");
+  await expect(rainyNight).toHaveCount(0);
+  await expect(list.getByRole("button", { name: "第1章 开端", exact: true })).toBeVisible();
+  // 收起的卷内有异常章节时，卷名行仍提示。
+  await expect(volume).toContainText("⚠");
+
+  // 跳到收起的卷中的章节时，这一卷自动展开。
+  const panel = page.locator("section").filter({ hasText: "章节异常" });
+  await panel.getByRole("button", { name: "第1章 雨夜", exact: true }).click();
+  await expect(volume).toHaveAttribute("aria-expanded", "true");
+  await expect(rainyNight).toBeVisible();
+  await expect(page.locator("article[data-chapter-scroll] h2")).toHaveText("第1章 雨夜");
+});
