@@ -32,6 +32,8 @@ export function PreviewBrowser({
 }) {
   const [selected, setSelected] = useState(0);
   const [reveal, setReveal] = useState(0);
+  // 最近一次跳转要高亮的行；只在跳转到的那一章显示，换章后不再显示。
+  const [target, setTarget] = useState<{ order: number; line?: string }>();
   const items = useMemo(() => [...reviewNumbers(version.chapters, options), ...aiItems], [version.chapters, options, aiItems]);
   const flagged = useMemo(() => pendingOrders(items), [items]);
 
@@ -45,8 +47,9 @@ export function PreviewBrowser({
       <NumberReviewPanel
         items={items}
         chapterTitle={(order) => version.chapters[order]?.title ?? `#${order}`}
-        onJump={(order) => {
+        onJump={(order, line) => {
           setSelected(order);
+          setTarget({ order, line });
           setReveal((n) => n + 1);
         }}
         options={options}
@@ -58,10 +61,21 @@ export function PreviewBrowser({
       <ChapterBrowser
         chapters={version.chapters}
         selected={selected}
-        onSelect={setSelected}
+        onSelect={(order) => {
+          setSelected(order);
+          // 从列表打开别的章节后，再切回来也不再停在高亮行所在的页。
+          if (order !== selected) setTarget(undefined);
+        }}
         flagged={flagged}
         revealKey={reveal}
-        renderContent={(c) => <ChapterText text={chapterText(version.text, version.chapters[c.order]!)} />}
+        renderContent={(c) => (
+          // 每次跳转换 key 重新挂载，让正文打开高亮行所在的页。
+          <ChapterText
+            key={`${c.order}:${reveal}`}
+            text={chapterText(version.text, version.chapters[c.order]!)}
+            highlight={target?.order === c.order ? target.line : undefined}
+          />
+        )}
       />
     </div>
   );

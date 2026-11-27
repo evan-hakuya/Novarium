@@ -80,7 +80,8 @@ export function NumberReviewPanel({
 }: {
   items: ReviewItem[];
   chapterTitle: (order: number) => string;
-  onJump: (order: number) => void;
+  /** 跳到章节；line 是要在正文中高亮的一行（AI 条目），不传时跳到章节标题。 */
+  onJump: (order: number, line?: string) => void;
   options: ProcessOptions;
   onChangeOptions: (next: ProcessOptions) => void;
   onPatchOptions: (next: ProcessOptions) => void;
@@ -155,8 +156,8 @@ export function NumberReviewPanel({
   const selectedFixable = selected.filter(canFix);
   const allChecked = visible.length > 0 && selected.length === visible.length;
 
-  const jump = (order: number) => (
-    <button type="button" className="text-left underline underline-offset-2 hover:text-foreground" onClick={() => onJump(order)}>
+  const jump = (order: number, line?: string) => (
+    <button type="button" className="text-left underline underline-offset-2 hover:text-foreground" onClick={() => onJump(order, line)}>
       {chapterTitle(order)}
     </button>
   );
@@ -306,7 +307,9 @@ function pendingSummary(blocking: number, pending: number): string {
   return `${blocking} 处待处理，处理完才能继续${check && `；另有 ${check}`}`;
 }
 
-function ItemText({ item, jump }: { item: ReviewItem; jump: (order: number) => ReactNode }) {
+type Jump = (order: number, line?: string) => ReactNode;
+
+function ItemText({ item, jump }: { item: ReviewItem; jump: Jump }) {
   if (isAiItem(item)) return <AiItemText item={item} jump={jump} />;
   if (item.status === "fixed") {
     return (
@@ -352,12 +355,12 @@ function ItemText({ item, jump }: { item: ReviewItem; jump: (order: number) => R
   );
 }
 
-function AiItemText({ item, jump }: { item: AiReviewItem; jump: (order: number) => ReactNode }) {
+function AiItemText({ item, jump }: { item: AiReviewItem; jump: Jump }) {
   const { ai } = item;
   const line = (
     <>
       「{ai.text}」
-      {ai.order !== null && <>（{jump(ai.order)}）</>}
+      {ai.order !== null && <>（{jump(ai.order, ai.text)}）</>}
     </>
   );
   // 向下取整：0.798 显示为 0.79，不会让未达 0.8 的结果看起来已达标。
