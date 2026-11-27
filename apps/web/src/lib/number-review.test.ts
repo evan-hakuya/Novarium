@@ -7,8 +7,8 @@ const none = { numberIgnores: [], numberFixes: [] };
 
 describe("哪些章节异常挡住导入", () => {
   it("缺号与重复编号只提示，不计入", () => {
-    // 第 2 章缺号，第 3 章重复。
-    const items = reviewNumbers([chapter(0, 1), chapter(1, 3), chapter(2, 3), chapter(3, 4)], none);
+    // 第 2 章缺号，第 4 章重复。
+    const items = reviewNumbers([chapter(0, 1), chapter(1, 3), chapter(2, 4), chapter(3, 4)], none);
     expect(items.map(itemKind).sort()).toEqual(["duplicate", "missing"]);
     expect(countPending(items)).toBe(0);
   });
@@ -18,7 +18,7 @@ describe("哪些章节异常挡住导入", () => {
     expect(typo.map(itemKind)).toEqual(["numberTypo"]);
     expect(countPending(typo)).toBe(0);
     const fixed = reviewNumbers([chapter(0, 5), chapter(1, 6), chapter(2, 7), chapter(3, 8)], { ...none, numberFixes: [typo[0]!.key] });
-    expect(fixed).toEqual([{ key: typo[0]!.key, status: "fixed", kind: "numberTypo", number: 6, title: "第6章", order: 2 }]);
+    expect(fixed).toEqual([{ key: typo[0]!.key, status: "fixed", kind: "numberTypo", number: 7, title: "第6章", order: 2 }]);
   });
 
   it("乱序计入，忽略后不再计入", () => {

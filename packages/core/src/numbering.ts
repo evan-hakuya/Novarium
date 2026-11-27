@@ -25,10 +25,11 @@ export type NumberAnomaly = { key: string; section: number } & (
   /** 乱序：章节不在分卷内按序号递增的最长序列上，位置需要调整。 */
   | { kind: "outOfOrder"; order: number; number: number; title: string }
   /**
-   * 序号笔误：相邻两章都是第 number 章，下一章是 number + 2，缺 number + 1。
-   * 第二章（order）应为 number + 1；first 是第一章。取代对应的重复编号与缺号。
+   * 序号笔误：这一章（order，标题中写的是 number）前后相邻的有序号章节是 expected - 1 与 expected + 1，
+   * 分卷中没有 expected，所以它应为 expected。previous 是前一章的阅读顺序。
+   * 缺号、重复编号与乱序按改正后的序号检查，由笔误引起的这些异常不再出现。
    */
-  | { kind: "numberTypo"; order: number; first: number; number: number; title: string }
+  | { kind: "numberTypo"; order: number; previous: number; number: number; expected: number; title: string }
 );
 
 export type NumberAnomalyKind = NumberAnomaly["kind"];
@@ -42,7 +43,10 @@ type Numbered = NumberedChapter & { number: number };
 
 const fixKey = (kind: "outOfOrder" | "numberTypo", section: number, number: number, title: string) => `${kind}|${section}|${number}|${title}`;
 
-/** 从可修复异常的 key 读出类型、修复前的序号与标题，用于显示已修复的异常。 */
+/**
+ * 从可修复异常的 key 读出类型、序号与修复前的标题，用于显示已修复的异常。
+ * 序号：乱序是章节的序号，序号笔误是改正后的序号。
+ */
 export function parseFixKey(key: string): { kind: "outOfOrder" | "numberTypo"; section: number; number: number; title: string } | null {
   const [kind, section, number, ...title] = key.split("|");
   if ((kind !== "outOfOrder" && kind !== "numberTypo") || !section || !number) return null;
@@ -155,32 +159,44 @@ export function findNumberAnomalies(chapters: readonly NumberedChapter[]): Numbe
     return { key: `sectionReset|${section}`, section, kind: "sectionReset", ...r };
   });
 
-  sections.forEach((section, s) => {
+  sections.forEach((written, s) => {
+    // 序号笔误：前后相邻的有序号章节是 p 与 p + 2，分卷中没有 p + 1，这一章却不是 p + 1，且标题可以改写。
+    // p 取前一章改正后的序号，改正出的 p + 1 也算已有，连续两处笔误（6、6、8、8、10）才不会互相干扰。
+    const present = new Set(written.map((c) => c.number));
+    const section: Numbered[] = [];
+    written.forEach((c, i) => {
+      const p = section[i - 1]?.number;
+      if (p === undefined || written[i + 1]?.number !== p + 2 || present.has(p + 1) || !renumberTitle(c.title, p + 1)) {
+        section.push(c);
+        return;
+      }
+      anomalies.push({
+        key: fixKey("numberTypo", s, p + 1, c.title),
+        section: s,
+        kind: "numberTypo",
+        order: c.order,
+        previous: written[i - 1]!.order,
+        number: c.number,
+        expected: p + 1,
+        title: c.title,
+      });
+      present.add(p + 1);
+      section.push({ ...c, number: p + 1 });
+    });
     const byNumber = new Map<number, number[]>();
     for (const c of section) byNumber.set(c.number, [...(byNumber.get(c.number) ?? []), c.order]);
-
-    // 序号笔误：只有这两章用了 n，二者在分卷的有序号章节中相邻，下一章是 n + 2，分卷中没有 n + 1，且标题可以改写。
-    const typos = new Set<number>();
-    section.forEach((c, i) => {
-      const prev = section[i - 1];
-      const n = c.number;
-      if (prev?.number !== n || byNumber.get(n)!.length !== 2 || section[i + 1]?.number !== n + 2) return;
-      if (byNumber.has(n + 1) || !renumberTitle(c.title, n + 1)) return;
-      typos.add(n);
-      anomalies.push({ key: fixKey("numberTypo", s, n, c.title), section: s, kind: "numberTypo", order: c.order, first: prev.order, number: n, title: c.title });
-    });
 
     const sorted = [...byNumber.keys()].sort((a, b) => a - b);
     for (let i = 1; i < sorted.length; i++) {
       const a = sorted[i - 1]!;
       const b = sorted[i]!;
-      if (b - a > 1 && !(typos.has(a) && b === a + 2)) {
+      if (b - a > 1) {
         anomalies.push({ key: `missing|${s}|${a + 1}|${b - 1}`, section: s, kind: "missing", from: a + 1, to: b - 1, after: byNumber.get(a)![0]! });
       }
     }
     for (const n of sorted) {
       const orders = byNumber.get(n)!;
-      if (orders.length > 1 && !typos.has(n)) anomalies.push({ key: `duplicate|${s}|${n}`, section: s, kind: "duplicate", number: n, orders });
+      if (orders.length > 1) anomalies.push({ key: `duplicate|${s}|${n}`, section: s, kind: "duplicate", number: n, orders });
     }
     for (const i of misplaced(section)) {
       const c = section[i]!;

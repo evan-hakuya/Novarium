@@ -12,11 +12,11 @@ describe("findNumberAnomalies", () => {
   });
 
   it("找出缺号、重复编号与乱序，并给出章节位置与 key", () => {
-    // 阅读顺序：0 序章，1 第1章，2 第2章，3 第5章，4 第4章，5 第4章，6 番外
-    expect(findNumberAnomalies(chapters([null, 1, 2, 5, 4, 4, null]))).toEqual([
+    // 阅读顺序：0 序章，1 第1章，2 第2章，3 第4章，4 第6章，5 第5章，6 第5章，7 番外
+    expect(findNumberAnomalies(chapters([null, 1, 2, 4, 6, 5, 5, null]))).toEqual([
       { key: "missing|0|3|3", section: 0, kind: "missing", from: 3, to: 3, after: 2 },
-      { key: "duplicate|0|4", section: 0, kind: "duplicate", number: 4, orders: [4, 5] },
-      { key: "outOfOrder|0|5|第5章", section: 0, kind: "outOfOrder", order: 3, number: 5, title: "第5章" },
+      { key: "duplicate|0|5", section: 0, kind: "duplicate", number: 5, orders: [5, 6] },
+      { key: "outOfOrder|0|6|第6章", section: 0, kind: "outOfOrder", order: 4, number: 6, title: "第6章" },
     ]);
   });
 
@@ -39,23 +39,37 @@ describe("findNumberAnomalies", () => {
     expect(parseFixKey("missing|0|3|3")).toBeNull();
   });
 
-  it("相邻两个第 n 章、下一章是 n+2 时是序号笔误，取代对应的重复编号与缺号", () => {
+  it("前后两章是 p 与 p+2、分卷中没有 p+1 时，这一章是序号笔误，应为 p+1；按改正后的序号检查其他异常", () => {
     expect(findNumberAnomalies(chapters([5, 6, 6, 8, 9]))).toEqual([
-      { key: "numberTypo|0|6|第6章", section: 0, kind: "numberTypo", order: 2, first: 1, number: 6, title: "第6章" },
+      { key: "numberTypo|0|7|第6章", section: 0, kind: "numberTypo", order: 2, previous: 1, number: 6, expected: 7, title: "第6章" },
     ]);
     // 无序号章节夹在中间也算相邻。
     expect(findNumberAnomalies(chapters([6, null, 6, 8])).map((a) => a.kind)).toEqual(["numberTypo"]);
+    // 第一个第 64 章夹在 61 与 63 之间：应为 62，重复编号、缺号与乱序都不再出现。
+    expect(findNumberAnomalies(chapters([61, 64, 63, 64, 65]))).toMatchObject([{ kind: "numberTypo", order: 1, number: 64, expected: 62 }]);
+    // 写错一位：554、455、556。
+    expect(findNumberAnomalies(chapters([554, 455, 556]))).toMatchObject([{ kind: "numberTypo", order: 1, number: 455, expected: 555 }]);
   });
 
-  it("拆成上下篇（不缺号）、不相邻、出现三次、下一章不是 n+2 或 n+1 在别处时不是序号笔误", () => {
+  it("前后两章不是 p 与 p+2、p+1 在别处或没有前后章时不是序号笔误", () => {
     const kinds = (numbers: (number | null)[]) => findNumberAnomalies(chapters(numbers)).map((a) => a.kind);
+    // 拆成上下篇，不缺号。
     expect(kinds([5, 6, 6, 7])).toEqual(["duplicate"]);
     expect(kinds([6, 5, 6, 8])).not.toContain("numberTypo");
-    expect(kinds([6, 6, 6, 8])).toEqual(["missing", "duplicate"]);
     expect(kinds([6, 6, 9])).toEqual(["missing", "duplicate"]);
     expect(kinds([5, 6, 6])).toEqual(["duplicate"]);
     // 第 7 章只是乱序：修复成第 7 章会出现两个第 7 章。
     expect(kinds([5, 6, 6, 8, 7])).not.toContain("numberTypo");
+    // 第三个第 6 章是笔误，前两个仍是重复编号。
+    expect(kinds([6, 6, 6, 8])).toEqual(["numberTypo", "duplicate"]);
+  });
+
+  it("连续两处笔误按改正后的前一章判断，不会多报", () => {
+    expect(findNumberAnomalies(chapters([6, 6, 8, 8, 10]))).toMatchObject([
+      { kind: "numberTypo", order: 1, expected: 7 },
+      { kind: "numberTypo", order: 3, expected: 9 },
+    ]);
+    expect(findNumberAnomalies(chapters([6, 6, 8, 8, 10]))).toHaveLength(2);
   });
 
   it("标题序号不能按原写法改写（大写数字）时，仍报重复编号与缺号", () => {
@@ -87,7 +101,7 @@ describe("numberTypo fix", () => {
     // 每章两行正文：两个同号标题只隔一行时，清洗会把它们当作重复标题合并。
     const body = ["第一段。", "第二段。"];
     const manuscript = ["第五章 开端", ...body, "第六章 清晨", ...body, "第六章 选择", ...body, "第八章 结尾", ...body].join("\n");
-    const book = await processManuscript(new TextEncoder().encode(manuscript), { ...DEFAULT_PROCESS_OPTIONS, numberFixes: ["numberTypo|0|6|第六章 选择"] });
+    const book = await processManuscript(new TextEncoder().encode(manuscript), { ...DEFAULT_PROCESS_OPTIONS, numberFixes: ["numberTypo|0|7|第六章 选择"] });
     expect(book.chapters.map((c) => [c.title, c.number])).toEqual([
       ["第五章 开端", 5], ["第六章 清晨", 6], ["第七章 选择", 7], ["第八章 结尾", 8],
     ]);
