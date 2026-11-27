@@ -1,6 +1,7 @@
 // DaoSearch 刮削源（ADR 0006，`docs/agents/daosearch.md`）。只从服务端调用。
 import {
   ScrapeError,
+  type CacheStatus,
   type Released,
   type ScrapeCache,
   type ScrapeCandidate,
@@ -233,6 +234,19 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
     return result.data;
   }
 
+  /** 缓存状态：与 getCached 的判断一致（格式不对的缓存当作没有），不发请求。 */
+  async function status(path: string, valid: (data: unknown) => boolean, maxAgeMs = DAOSEARCH_CACHE_MS): Promise<CacheStatus> {
+    const entry = cache ? await cache.get(path) : null;
+    if (!entry || !valid(entry.data)) return "none";
+    return now() - entry.fetchedAt < maxAgeMs ? "fresh" : "stale";
+  }
+  const isBook = (data: unknown) => !!data && typeof data === "object" && "source_book_id" in data;
+  const searchPath = (query: string) => `/search?${new URLSearchParams({ q: query, limit: String(SEARCH_LIMIT) })}`;
+  const bookPath = (ref: string) => {
+    const { platform, id } = parseRef(ref);
+    return `/books/${platform}/${encodeURIComponent(id)}`;
+  };
+
   /** 带缓存的读取：缓存未过期时不发请求；过期后带 ETag 重新验证。出错时不写缓存。 */
   async function getCached<T>(path: string, valid: (data: unknown) => boolean, maxAgeMs = DAOSEARCH_CACHE_MS): Promise<T> {
     if (!cache) return get<T>(path);
@@ -272,15 +286,24 @@ export function createDaoSearchSource(key: string, doFetch: typeof fetch = fetch
   return {
     id: "daosearch",
     async search(query) {
-      const params = new URLSearchParams({ q: query, limit: String(SEARCH_LIMIT) });
-      const found = await getCached<DaoSearchResult[]>(`/search?${params}`, Array.isArray);
+      const found = await getCached<DaoSearchResult[]>(searchPath(query), Array.isArray);
       return found.map(toCandidate);
     },
     async getBook(ref) {
-      const { platform, id } = parseRef(ref);
-      const isBook = (data: unknown) => !!data && typeof data === "object" && "source_book_id" in data;
-      const book = await getCached<DaoSearchBook>(`/books/${platform}/${encodeURIComponent(id)}`, isBook);
+      const book = await getCached<DaoSearchBook>(bookPath(ref), isBook);
       return toBook(book, await platformInfo(book.source));
+    },
+    searchStatus: (query) => status(searchPath(query), Array.isArray),
+    async bookStatus(ref) {
+      let path: string;
+      try {
+        path = bookPath(ref);
+      } catch {
+        return "none"; // 无效的 ref 没有缓存
+      }
+      // 读取详情时还会读 /sources（缓存 7 天），取两者中较差的状态。
+      const states = [await status(path, isBook), await status("/sources", Array.isArray, DAOSEARCH_SOURCES_CACHE_MS)];
+      return states.includes("none") ? "none" : states.includes("stale") ? "stale" : "fresh";
     },
     async check(): Promise<ScrapeQuota> {
       const limits = await get<DaoSearchLimits>("/limits/me");

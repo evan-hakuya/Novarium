@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./books";
-import { formatFacet, formatWait, formatWordCount, platformName, scrapeFailureReason } from "./scrape";
+import { costText, formatFacet, formatWait, formatWordCount, platformName, scrapeFailureReason } from "./scrape";
+
+describe("点数提示", () => {
+  it("按缓存状态说明是否消耗点数", () => {
+    expect([costText("fresh", 5), costText("stale", 5), costText("none", 5)]).toEqual([
+      "已缓存，不消耗点数",
+      "已缓存，内容没变时不消耗点数",
+      "消耗 5 点",
+    ]);
+  });
+});
 
 describe("平台标记的中文", () => {
   const f = (key: string, label: string, value: string, raw?: string) => ({ key, label, value, ...(raw ? { raw } : {}) });
