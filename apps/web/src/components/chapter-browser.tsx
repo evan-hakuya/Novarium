@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ChevronRightIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +19,8 @@ const scrollsItself = (el: Element) => getComputedStyle(el).overflowY === "auto"
  * 左侧章节列表、右侧章节正文。正文由调用方按章节渲染。
  * 窄屏（md 以下）只显示一栏：先显示列表，选中章节后显示正文，「← 章节列表」返回。
  * 窄屏正文由页面滚动；列表限高，几百章时不把后面的内容推出页面。
- * 章节有所属卷时，列表在每卷第一章前显示不可点击的卷名。
+ * 章节有所属卷时，列表按卷分组：卷名行可以展开、收起这一卷的章节，开始时全部展开。
+ * 打开或跳转到收起的卷中的章节时，这一卷自动展开。
  * 传入 selected 与 onSelect 时由调用方控制当前章节；flagged 中的章节在列表中标出。
  * revealKey 每变一次（例如从异常面板跳转），就把正文滚入视口并把焦点移到章节标题。
  * 正文中有高亮行（[data-highlight]，见 ChapterText 的 highlight）时，改为滚到并聚焦这一行。
@@ -42,6 +44,23 @@ export function ChapterBrowser({
   const selected = controlled ?? own;
   const select = onSelect ?? setOwn;
   const current = chapters[selected];
+  // 每章所属卷的第一章下标；没有卷时为 null。卷名可能重复，用第一章下标区分卷。
+  const groups = useMemo(() => {
+    const starts: (number | null)[] = [];
+    chapters.forEach((c, i) => {
+      starts.push(!c.volume ? null : c.volume === chapters[i - 1]?.volume ? starts[i - 1]! : i);
+    });
+    return starts;
+  }, [chapters]);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
+  // 换章或外部跳转时展开当前章所在的卷。在渲染中更新，使下面的 effect 滚动列表时这一章已经显示。
+  const [opened, setOpened] = useState(`${selected}:${revealKey}`);
+  if (opened !== `${selected}:${revealKey}`) {
+    setOpened(`${selected}:${revealKey}`);
+    const g = groups[selected];
+    if (g != null && collapsed.has(g)) setCollapsed(new Set([...collapsed].filter((s) => s !== g)));
+  }
+  const toggle = (g: number) => setCollapsed((prev) => (prev.has(g) ? new Set([...prev].filter((s) => s !== g)) : new Set(prev).add(g)));
   const listRef = useRef<HTMLOListElement>(null);
   const articleRef = useRef<HTMLElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -99,39 +118,46 @@ export function ChapterBrowser({
       className="scroll-mt-4 rounded-xl border md:grid md:h-[70svh] md:grid-cols-[minmax(10rem,16rem)_1fr] md:overflow-hidden"
     >
       <ol ref={listRef} className={cn("max-h-[60svh] overflow-y-auto py-2 text-sm md:max-h-none md:border-r", reading && "max-md:hidden")}>
-        {chapters.map((c, i) => (
+        {chapters.map((c, i) => {
+          const hidden = groups[i] != null && collapsed.has(groups[i]!);
+          if (hidden && groups[i] !== i) return null;
+          return (
           <li key={c.order}>
-            {c.volume && c.volume !== chapters[i - 1]?.volume && (
-              <div
-                role="heading"
-                aria-level={3}
-                className="px-3 pt-3 pb-1 text-xs font-semibold text-muted-foreground"
-              >
-                {c.volume}
-              </div>
+            {groups[i] === i && (
+              <VolumeRow
+                title={c.volume!}
+                count={groups.filter((g) => g === i).length}
+                flagged={!!flagged && chapters.some((d, k) => groups[k] === i && flagged.has(d.order))}
+                open={!collapsed.has(i)}
+                onToggle={() => toggle(i)}
+              />
             )}
-            <button
-              type="button"
-              data-order={c.order}
-              onClick={() => {
-                select(c.order);
-                setReading(true);
-              }}
-              className={cn(
-                "flex w-full items-baseline justify-between gap-2 px-3 py-1.5 text-left hover:bg-muted pointer-coarse:py-3",
-                c.order === selected && "bg-muted font-medium",
-                flagged?.has(c.order) && "text-amber-700 dark:text-amber-400",
-              )}
-            >
-              <span className="truncate">
-                {flagged?.has(c.order) && <span aria-label="序号异常">⚠ </span>}
-                {c.title}
-              </span>
-              {c.byteLength === 0 && <span className="shrink-0 text-xs text-muted-foreground">空</span>}
-              {c.notice && <span className="shrink-0 text-xs text-muted-foreground">作者公告</span>}
-            </button>
+            {!hidden && (
+              <button
+                type="button"
+                data-order={c.order}
+                onClick={() => {
+                  select(c.order);
+                  setReading(true);
+                }}
+                className={cn(
+                  "flex w-full items-baseline justify-between gap-2 px-3 py-1.5 text-left hover:bg-muted pointer-coarse:py-3",
+                  c.volume && "pl-8",
+                  c.order === selected && "bg-muted font-medium",
+                  flagged?.has(c.order) && "text-amber-700 dark:text-amber-400",
+                )}
+              >
+                <span className="truncate">
+                  {flagged?.has(c.order) && <span aria-label="序号异常">⚠ </span>}
+                  {c.title}
+                </span>
+                {c.byteLength === 0 && <span className="shrink-0 text-xs text-muted-foreground">空</span>}
+                {c.notice && <span className="shrink-0 text-xs text-muted-foreground">作者公告</span>}
+              </button>
+            )}
           </li>
-        ))}
+          );
+        })}
       </ol>
       <article
         ref={articleRef}
@@ -151,6 +177,30 @@ export function ChapterBrowser({
         )}
       </article>
     </div>
+  );
+}
+
+/** 章节列表中的卷名行：点击展开或收起这一卷的章节。收起时如果卷内有异常章节，仍显示提示。 */
+function VolumeRow({ title, count, flagged, open, onToggle }: { title: string; count: number; flagged: boolean; open: boolean; onToggle: () => void }) {
+  return (
+    <h3>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className={cn(
+          "flex w-full items-center gap-1 px-2 pt-3 pb-1.5 text-left text-base font-semibold hover:bg-muted pointer-coarse:py-3",
+          flagged && !open && "text-amber-700 dark:text-amber-400",
+        )}
+      >
+        <ChevronRightIcon aria-hidden className={cn("size-4 shrink-0 transition-transform", open && "rotate-90")} />
+        <span className="truncate">
+          {flagged && !open && <span aria-label="含序号异常">⚠ </span>}
+          {title}
+        </span>
+        <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">{count} 章</span>
+      </button>
+    </h3>
   );
 }
 
