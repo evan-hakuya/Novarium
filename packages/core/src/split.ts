@@ -162,6 +162,8 @@ function markLeadVolumes(lines: string[], kinds: Map<number, TitleKind>): void {
   let previous: number | null = null;
   const found: number[] = [];
   for (const [i, kind] of [...kinds].sort((a, b) => a[0] - b[0])) {
+    // 卷标题已经说明了分卷，它后面的重置不再从短行找卷名。
+    if (kind === "volume") previous = null;
     const number = kind === "chapter" ? extractChapterOrder(lines[i]!.trim()) : null;
     if (number === null) continue;
     if (number === 1 && first === null) first = i;

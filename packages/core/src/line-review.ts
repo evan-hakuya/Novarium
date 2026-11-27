@@ -155,7 +155,7 @@ export interface ChapterSignal {
  * 2. 涉及章节序号异常的章节标题；
  * 3. 正文不到 SHORT_CHAPTER_CHARS 字的章节标题；
  * 4. 含作者公告用词的行，例如「第 100 章 请假」。
- * 第 1 章前的短行（见 candidateLines）规则判为正文，属于第 1 类。
+ * 第 1 章前的短行（见 candidateLines）规则判为正文或卷（#105），都属于第 1 类。
  * 其余编号连续、正文正常的「第 N 章」标题直接相信规则。
  */
 export function markSuspicious(candidates: readonly CandidateLine[], chapters: readonly ChapterSignal[]): CandidateLine[] {

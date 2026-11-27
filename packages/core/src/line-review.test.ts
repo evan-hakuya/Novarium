@@ -117,6 +117,17 @@ describe("候选行", () => {
     expect(splitChapters([...opening, "", "云涌", "", "第一章 新篇", "　　正文。"].join("\n"), replace).every((c) => !c.volume)).toBe(true);
   });
 
+  it("序号重置前的短行不是卷名：超过 20 字、以句号结尾、上下没有空行，或已有卷标题时", () => {
+    const volumes = (lead: string[]) =>
+      [...new Set(splitChapters(["第一章 开端", "　　正文。", "第二章 继续", "　　正文。", ...lead, "第一章 新篇", "　　正文。"].join("\n"), { chapterPattern: null }).map((c) => c.volume))];
+    expect(volumes(["", "这一行没有结尾标点但是已经超过了二十个字的长度上限", ""])).toEqual([null]);
+    expect(volumes(["", "他走了。", ""])).toEqual([null]);
+    expect(volumes(["", "风起"])).toEqual([null]);
+    expect(volumes(["　　正文。", "风起", ""])).toEqual([null]);
+    // 卷标题与第一章之间的短行（如卷的副标题）不改卷名。
+    expect(volumes(["", "第二卷 云涌", "", "风起", ""])).toEqual([null, "第二卷 云涌"]);
+  });
+
   it("整理时疑似作者公告的独立短行不与下一行正文合并，成为可疑的候选行；对话与含常见词的折行正文照常合并", async () => {
     const manuscript = "第一章 开端\n他推开门。\n生病了，请假一天\n明天补更。\n“可以请假\n吗？”他问。\n这说明他没有收到通知\n，只好先回家。\n";
     const book = await processManuscript(utf8(manuscript), { ...DEFAULT_PROCESS_OPTIONS });
